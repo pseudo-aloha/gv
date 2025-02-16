@@ -1,4 +1,4 @@
-cirr -v /C/Users/User/Documents/gv/design/normal/2021_cad/test05/r2.v
+cirr -v /home/yenlu_mepu/gv/design/normal/2021_cad/test05/r2.v
 set sys vrf
-func eco -folder /C/Users/User/Documents/gv/design/normal/2021_cad/test01/
+func eco -folder /home/yenlu_mepu/gv/design/normal/2021_cad/test05/
 quit -f

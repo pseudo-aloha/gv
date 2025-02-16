@@ -133,7 +133,7 @@ EcoNtk::parseNtkFile(const string& dir) {
   // rewrite the design file (handle capital chars and gate name stuff)
     ifstream file(dir);
     assert(file.is_open());
-    ofstream fout("/C/Users/User/Documents/gv/tmp.v");
+    ofstream fout("/home/yenlu_mepu/gv/tmp.v");
     string buf;
     unordered_set<string> gateTypeStrings = {"and", "or", "nand", "nor", "not", "buf", "xor", "xnor"};
     unordered_set<string> wires;
