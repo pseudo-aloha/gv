@@ -26,6 +26,7 @@ public:
   ~EcoMgr () { delete _oldNtk; delete _newNtk; }
   void doEco(const string& oldDesignName, const string& newDesignName);
   void readDesigns(const string& oldDesignName, const string& newDesignName);
+  void doFraig();
   
 private:
   gv::cir::EcoNtk* _oldNtk;

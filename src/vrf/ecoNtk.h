@@ -59,6 +59,7 @@ class EcoNtk {
     // get functions
     EcoGate* getGateByName(const string& name);
     EcoGate* getPoByName(const string& name);
+    Abc_Ntk_t* getAbcNtk() { return _pAbcNtk; }
   private:
     unordered_set<string> gateTypeStrings = {"and", "or", "nand", "nor", "not", "buf", "xor", "xnor"};
     unordered_map<string, EcoGate*> _gateName2Gate;
@@ -71,6 +72,7 @@ class EcoNtk {
     vector<EcoGate*> GateVec;
     // store the AIG version of the ntk
     EcoCir* cirV;
+    Abc_Ntk_t* _pAbcNtk;
 };
 
 
@@ -88,16 +90,17 @@ class EcoGate {
     // Use to represent the primitive gate
     enum EcoGateType {
       ECO_CONST_0_GATE = 0,
-      ECO_AND_GATE = 1,
-      ECO_OR_GATE = 2,
-      ECO_NAND_GATE = 3,
-      ECO_NOR_GATE = 4,
-      ECO_XOR_GATE = 5,
-      ECO_XNOR_GATE = 6,
-      ECO_BUF_GATE = 7,
-      ECO_NOT_GATE = 8,
-      ECO_PI_GATE = 9,
-      ECO_PO_GATE = 10
+      ECO_CONST_1_GATE = 1,
+      ECO_AND_GATE = 2,
+      ECO_OR_GATE = 3,
+      ECO_NAND_GATE = 4,
+      ECO_NOR_GATE = 5,
+      ECO_XOR_GATE = 6,
+      ECO_XNOR_GATE = 7,
+      ECO_BUF_GATE = 8,
+      ECO_NOT_GATE = 9,
+      ECO_PI_GATE = 10,
+      ECO_PO_GATE = 11
     };
     unsigned _gateType;
     string _gateName;

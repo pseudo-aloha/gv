@@ -16,6 +16,8 @@ EcoGate::getGateTypeName() {
   switch (_gateType) {
     case ECO_CONST_0_GATE:
       return "CONST0";
+    case ECO_CONST_1_GATE:
+      return "CONST1";
     case ECO_AND_GATE:
       return "AND";
     case ECO_OR_GATE:
@@ -45,6 +47,8 @@ EcoGate::EcoGate(string gateType, string gateName) {
   _gateName = gateName;
   if(gateType == "const0")
     _gateType = ECO_CONST_0_GATE;
+  if(gateType == "const1")
+    _gateType = ECO_CONST_1_GATE;
   else if(gateType == "and")
     _gateType = ECO_AND_GATE;
   else if(gateType == "or")
@@ -346,6 +350,7 @@ EcoNtk::abcReadFile() {
   assert(pNtk && Abc_NtkCheck(pNtk)); // check that the read circuit is OK
   
   Abc_Ntk_t* pNtkStrash = Abc_NtkStrash( pNtk, fAllNodes, !fAllNodes, 0 ); // strash the circuit
+  _pAbcNtk = pNtkStrash;
 
   // new the internal EcoCir
   cirV->readCirFromAbcNtk(pNtkStrash);
@@ -354,18 +359,14 @@ EcoNtk::abcReadFile() {
   {
       string objName = Abc_ObjName( pNode );
       
-      if(!pNode->pCopy) {
-        // assert(0);
+      if(!pNode->pCopy)
         continue;
-      }
       
       CirGate* cirGate = cirV->getGate(Abc_ObjId(Abc_ObjRegular(pNode->pCopy)));
       if(Abc_ObjType(Abc_ObjRegular(pNode->pCopy)) != ABC_OBJ_CONST1) {
         EcoGate* ecoGate = getGateByName(objName);
         ecoGate->ecoGateV = cirGate;
         ecoGate->ecoGateVComp = Abc_ObjIsComplement(pNode->pCopy);
-        
-        // cout << objName << " comp " << ecoGate->ecoGateVComp << " " << cirGate->getIn0().isInv() << " " << cirGate->getIn1().isInv() << endl;
       }
   }
 }
