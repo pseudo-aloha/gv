@@ -15,10 +15,11 @@ EcoMgr::doEco(const string& oldDesignName, const string& newDesignName) {
 // read input designs
 void
 EcoMgr::readDesigns(const string& oldDesignName, const string& newDesignName) {
-  _oldNtk = new gv::cir::EcoNtk;
-  _newNtk = new gv::cir::EcoNtk;
-  _oldNtk->parseNtkFile(oldDesignName);
-  _newNtk->parseNtkFile(newDesignName);
+  _oldNtk->readNtkFile(oldDesignName);
+  cout << "------------------------------------" << endl;
+  _newNtk->readNtkFile(newDesignName);
 }
+
+// end of namespace gv::eco
 }}
 #endif

@@ -20,6 +20,10 @@ class EcoCir;
 // the main class for Andrew's ECO Approach
 class EcoMgr {
 public:
+  // constructor
+  EcoMgr () { _oldNtk = new gv::cir::EcoNtk;
+              _newNtk = new gv::cir::EcoNtk; }
+  ~EcoMgr () { delete _oldNtk; delete _newNtk; }
   void doEco(const string& oldDesignName, const string& newDesignName);
   void readDesigns(const string& oldDesignName, const string& newDesignName);
   

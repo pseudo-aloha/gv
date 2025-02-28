@@ -6,6 +6,7 @@
 #include "proof/fraig/fraig.h"
 #include <iostream>
 #include <string>
+#include <cassert>
 
 namespace gv {
 namespace cir {
@@ -14,28 +15,79 @@ string
 EcoGate::getGateTypeName() {
   switch (_gateType) {
     case ECO_CONST_0_GATE:
-      return "CONST_0_GATE";
-    case ECO_CONST_1_GATE:
-      return "CONST_1_GATE";
+      return "CONST0";
     case ECO_AND_GATE:
-      return "AND_GATE";
+      return "AND";
     case ECO_OR_GATE:
-      return "OR_GATE";
+      return "OR";
     case ECO_NAND_GATE:
-      return "NAND_GATE";
+      return "NAND";
     case ECO_NOR_GATE:
-      return "NOR_GATE";
+      return "NOR";
     case ECO_XOR_GATE:
-      return "XOR_GATE";
+      return "XOR";
     case ECO_XNOR_GATE:
-      return "XNOR_GATE";
+      return "XNOR";
     case ECO_BUF_GATE:
-      return "BUF_GATE";
+      return "BUF";
     case ECO_NOT_GATE:
-      return "NOT_GATE";
+      return "NOT";
+    case ECO_PI_GATE:
+      return "PI";
+    case ECO_PO_GATE:
+      return "PO";
     default:
-      return "NONE_GATE";
+      return "NONE";
   }
+}
+
+EcoGate::EcoGate(string gateType, string gateName) {
+  _gateName = gateName;
+  if(gateType == "const0")
+    _gateType = ECO_CONST_0_GATE;
+  else if(gateType == "and")
+    _gateType = ECO_AND_GATE;
+  else if(gateType == "or")
+    _gateType = ECO_OR_GATE;
+  else if(gateType == "nand")
+    _gateType = ECO_NAND_GATE;
+  else if(gateType == "nor")
+    _gateType = ECO_NOR_GATE;
+  else if(gateType == "xor")
+    _gateType = ECO_XOR_GATE;
+  else if(gateType == "xnor")
+    _gateType = ECO_XNOR_GATE;
+  else if(gateType == "buf")
+    _gateType = ECO_BUF_GATE;
+  else if(gateType == "not")
+    _gateType = ECO_NOT_GATE;
+  else if(gateType == "pi")
+    _gateType = ECO_PI_GATE;
+  else if(gateType == "po")
+    _gateType = ECO_PO_GATE;
+}
+
+void
+EcoGate::reportGate() {
+  cout << getGateTypeName() << " " << getGateName() << " ";
+  for(const auto& fanin : _fanins) {
+    cout << fanin->getGateName() << " ";
+  }
+  cout << endl;
+}
+
+// get the eco gate by name
+EcoGate*
+EcoNtk::getGateByName(const string& name) {
+  if(!_gateName2Gate.count(name)) return nullptr;
+  return _gateName2Gate.at(name);
+}
+
+// get po by po name
+EcoGate*
+EcoNtk::getPoByName(const string& name) {
+  if(!_poName2PoGate.count(name)) return nullptr;
+  return _poName2PoGate.at(name);
 }
 
 // split the line by white spaces
@@ -52,6 +104,21 @@ vector<string> splitLine(const string& line) {
       }
     }
   }
+  return ret;
+}
+
+string stripSpecialTok(const string& str) {
+  string ret;
+  unordered_set<char> specialTok = {'(', ')', ';', ',', '{', '}'};
+  size_t i = 0;
+  while(i < str.size()) {
+    if(!specialTok.count(str.at(i))) break;
+  }
+  for( ; i < str.size(); i++) {
+    if(specialTok.count(str.at(i))) break;
+    ret.push_back(str.at(i));
+  }
+  assert(!ret.empty());
   return ret;
 }
 
@@ -78,7 +145,25 @@ vector<string> getGateNets(const string& line) {
   return ret;
 }
 
-vector<string> getWires(const string& line) {
+// get the net names in the assign line
+vector<string> getAssignNets(const string& line) {
+  vector<string> ret;
+  string buf;
+  // bool flag = false;
+  for(size_t i = 0, n = line.size(); i < n; i++) {
+    if(line[i] != ' ' && line[i] != ',' && line[i] != '(' && line[i] != ')' && line[i] != '=' && line[i] != ';')
+      buf.push_back(line[i]);
+    else {
+      if(!buf.empty() && buf != "assign")
+        ret.push_back(buf);
+      buf.clear();
+    }
+  }
+  assert(ret.size() == 2);
+  return ret;
+}
+
+vector<string> getWiresPorts(const string& line) {
   vector<string> ret;
   string buf;
   int lsb = -1, msb = -1;
@@ -106,13 +191,13 @@ vector<string> getWires(const string& line) {
             else
               msbStr.push_back(buf[j]);
           }
-          cout << lsbStr << " " << msbStr << endl;
+          
           lsb = stoi(lsbStr);
           msb = stoi(msbStr);
           if(lsb > msb)
             swap(lsb, msb);
         }
-        else if(buf != "wire"){
+        else if(buf != "wire" && buf != "input" && buf != "output"){
           if(lsb >= 0) {
             for(int i=lsb; i<=msb; i++) {
               ret.push_back(buf + "[" + to_string(i) + "]");
@@ -128,14 +213,13 @@ vector<string> getWires(const string& line) {
   return ret;
 }
 
+// rewrite the design file (handle capital chars and gate name stuff)
 void
-EcoNtk::parseNtkFile(const string& dir) {
-  // rewrite the design file (handle capital chars and gate name stuff)
-    ifstream file(dir);
+EcoNtk::rewriteDesign(const string& dir) {
+  ifstream file(dir);
     assert(file.is_open());
     ofstream fout("/home/yenlu_mepu/gv/tmp.v");
     string buf;
-    unordered_set<string> gateTypeStrings = {"and", "or", "nand", "nor", "not", "buf", "xor", "xnor"};
     unordered_set<string> wires;
     while (getline(file, buf))
     {
@@ -179,7 +263,7 @@ EcoNtk::parseNtkFile(const string& dir) {
         }
         else {
           if(firstTok == "wire") {
-            vector<string> lineWires = getWires(buf);
+            vector<string> lineWires = getWiresPorts(buf);
             for(const auto& w : lineWires)
               wires.insert(w);
           }
@@ -188,6 +272,56 @@ EcoNtk::parseNtkFile(const string& dir) {
       }
     }
 
+}
+
+
+
+// parse the primitve information and store them
+void
+EcoNtk::parsePrimitiveGates(const string& dir) {
+  ifstream file(dir);
+  assert(file.is_open());
+  string buf;
+  while (getline(file, buf))
+  {
+    // splitting the items in the line by white space
+    vector<string> items = splitLine(buf);
+    
+    // if the line is not empty
+    if(!items.empty()) {
+      string firstTok = items.at(0);
+      // if it is a primitive
+      if(gateTypeStrings.count(firstTok)) {
+        string gateType = firstTok;
+        vector<string> nets = getGateNets(buf);
+        string gateName = nets.at(0);
+        EcoGate* gate = new EcoGate(gateType, gateName);
+        for(size_t i=1; i<nets.size(); i++)
+          gate->_faninNames.push_back(nets.at(i));
+        _gateName2Gate[gateName] = gate;
+        GateVec.push_back(gate);
+        // cout << gateType << " : ";
+        // for(auto& net : nets) {
+        //   cout << net << " ";
+        // }
+        // cout << endl;
+      }
+      else if(firstTok == "assign") { // deal with assigns
+        assert(items.size() >= 3);
+        vector<string> nets = getAssignNets(buf);
+        string gateName = nets.at(0);
+        EcoGate* gate = new EcoGate("buf", gateName);
+        gate->_faninNames.push_back(nets.at(1));
+        _gateName2Gate[gateName] = gate;
+        GateVec.push_back(gate);
+      }
+    }
+  }
+  file.close();
+}
+
+void
+EcoNtk::abcReadFile() {
   // abc read file parameters
   Fraig_Params_t Params, * pParams = &Params;
   int fAllNodes = 1;
@@ -208,136 +342,121 @@ EcoNtk::parseNtkFile(const string& dir) {
   pParams->fVerbose   =    0; // the verbosiness flag
   pParams->fVerboseP  =    0; // the verbosiness flag
 
-  Abc_Ntk_t* pNtk = Io_Read( "/C/Users/User/Documents/gv/tmp.v", IO_FILE_VERILOG, 0, 0 );
-  assert(pNtkOld && Abc_NtkCheck(pNtk)); // 
+  Abc_Ntk_t* pNtk = Io_Read( "/home/yenlu_mepu/gv/tmp.v", IO_FILE_VERILOG, 0, 0 );
+  assert(pNtk && Abc_NtkCheck(pNtk)); // check that the read circuit is OK
+  
+  Abc_Ntk_t* pNtkStrash = Abc_NtkStrash( pNtk, fAllNodes, !fAllNodes, 0 ); // strash the circuit
 
   // new the internal EcoCir
-  cirV = new EcoCir();
-  cirV->readCirFromAbcNtk(pNtk);
+  cirV->readCirFromAbcNtk(pNtkStrash);
+  
+  Abc_NtkForEachObj( pNtk, pNode, i )
+  {
+      string objName = Abc_ObjName( pNode );
+      
+      if(!pNode->pCopy) {
+        // assert(0);
+        continue;
+      }
+      
+      CirGate* cirGate = cirV->getGate(Abc_ObjId(Abc_ObjRegular(pNode->pCopy)));
+      if(Abc_ObjType(Abc_ObjRegular(pNode->pCopy)) != ABC_OBJ_CONST1) {
+        EcoGate* ecoGate = getGateByName(objName);
+        ecoGate->ecoGateV = cirGate;
+        ecoGate->ecoGateVComp = Abc_ObjIsComplement(pNode->pCopy);
+        
+        // cout << objName << " comp " << ecoGate->ecoGateVComp << " " << cirGate->getIn0().isInv() << " " << cirGate->getIn1().isInv() << endl;
+      }
+  }
 }
 
-// bool
-// newFaninComp(Abc_Obj_t *pObj, int inIdx) {
-//     assert(inIdx == 0 || inIdx == 1);
-//     bool ret = false;
-//     if(inIdx == 0) {
-//         ret = Abc_ObjFaninC0(pObj);
-//         if(Abc_AigNodeIsConst(Abc_ObjFanin0(pObj))) {
-//             ret ^= true;
-//         }
-//     }
-//     else {
-//         ret = Abc_ObjFaninC1(pObj);
-//         if(Abc_AigNodeIsConst(Abc_ObjFanin1(pObj))) {
-//             ret ^= true;
-//         }
-//     }
-//     return ret;
-// }
+void
+EcoNtk::genConnection() {
+  for(auto& gate : GateVec) {
+    for(auto& faninName : gate->_faninNames) {
+      EcoGate* fanin = getGateByName(faninName);
+      assert(fanin != nullptr);
+      gate->_fanins.push_back(fanin);
+    }
+  }
+}
 
-// const bool
-// EcoCir::readCirFromAbcNtk(Abc_Ntk_t* pNtk) {
-//     // TODO : Convert abc ntk to gv aig ntk
-//     CirGateV gateV;
-//     // Abc_Ntk_t* pNtk = NULL;            // the gia pointer of abc
-//     Abc_Obj_t *pObj, *pObjRi, *pObjRo; // the obj element of gia
-//     unsigned iPi = 0, iPo = 0, iRi = 0, iRo = 0;
-//     int i;
-
-// cout << "pppppppsp " << Abc_NtkPiNum(pNtk) << endl;
-//     // initialize the size of the containers
-//     initCir(Abc_NtkPiNum(pNtk), Abc_NtkPoNum(pNtk), Abc_NtkLatchNum(pNtk), Abc_NtkObjNumMax(pNtk));
-
-//     // increment the global travel id for circuit traversing usage
-//     // Abc_NtkIncrementTravId(pNtk);
-
-//     // since we don't want to traverse the constant node, set the TravId of the
-//     // constant node to be as the global one
-//     // Abc_NodeSetTravIdCurrent(pGia, Gia_ManConst0(pGia));
-//     _totGateList.push_back(_const0);
-//     cout << "pppppppppppppppppppppppppp" << endl;
+void
+EcoNtk::parsePO(const string& dir) {
+  ifstream file(dir);
+  assert(file.is_open());
+  string buf;
+  while (getline(file, buf))
+  {
+    // splitting the items in the line by white space
+    vector<string> items = splitLine(buf);
     
-//     // set the const node
-//     _totGateList[0] = _const0;
-//     // traverse the obj's in topological order
-//     Abc_NtkForEachObj( pNtk, pObj, i) {
-//         char *name = new char[strlen(Abc_ObjName(pObj))+1]; strcpy(name, Abc_ObjName(pObj));
-//         if(Abc_ObjIsPi(pObj)) {
-//             // cout<< "pi " << Abc_ObjId(pObj) << endl;
-            
-//             CirPiGate* gate = new CirPiGate(Abc_ObjId(pObj), 0);
-            
-//             _piList[iPi++] = gate;
-//             _totGateList[Abc_ObjId(pObj)] = gate;
-//             gate->setName(name);
-//         }
-//         else if(Abc_ObjIsPo(pObj)) {
-//         //  
-//         // cout<< "po " << Abc_ObjId(pObj) << endl;
-//         }
-//         else if(Abc_ObjIsNode(pObj)) {
-//             // cout<< "node " << Abc_ObjId(pObj) << " / " << Abc_NtkObjNumMax(pNtk) << endl;
-//             CirAigGate *gate = new CirAigGate(Abc_ObjId(pObj), 0);
-//             _totGateList[Abc_ObjId(pObj)] = gate;
-//             gate->setIn0(getGate(Abc_ObjId(Abc_ObjFanin0(pObj))), newFaninComp(pObj, 0));
-//             gate->setIn1(getGate(Abc_ObjId(Abc_ObjFanin1(pObj))), newFaninComp(pObj, 1));
-//             // char *name = new char[strlen(Abc_ObjName(pObj))+1]; strcpy(name, Abc_ObjName(pObj));
-//             gate->setName(name);
-//         }
-//         // TODO : handle latches
+    // if the line is not empty
+    if(!items.empty()) {
+      string firstTok = items.at(0);
+      if(firstTok == "output") {
+        vector<string> POs = getWiresPorts(buf);
+        for(const auto& PO : POs) {
+          EcoGate* gate = new EcoGate("po", PO);
+          gate->_faninNames.push_back(PO);
+          gate->_fanins.push_back(_gateName2Gate.at(PO));
+          _POList.push_back(gate);
+          _poName2PoGate[PO] = gate;
+        }
+      }
+    }
+  }
+  file.close();
+}
 
-//         // else if(Abc_ObjIsBo(pObj)) {
-//         //     CirRoGate* gate = new CirRoGate(Abc_ObjId(pObj), 0);
-//         //     _roList[iRo++] = gate;
-//         //     _totGateList[Abc_ObjId(pObj)] = gate;
-//         // }
-//         // else if(Abc_ObjIsBi(pObj)) {
-//         //     CirRiGate *gate = new CirRiGate(Abc_ObjId(pObj), 0, Abc_ObjId(Abc_ObjFanin0(pObj)));
-//         //     gate->setIn0(getGate(Abc_ObjId(Abc_ObjFanin0(pObj))), newFaninComp(pObj, 0));
-//         //     _riList[iPo++] = gate;
-//         //     _totGateList[Abc_ObjId(pObj)] = gate;
-//         // }
-//         else if(Abc_AigNodeIsConst(pObj)) {
-//             // cout << "I am const1 " << Abc_ObjId(pObj) <<  endl;
-//         }
-//         else {
-//             // cout << "not defined gate type" << endl;
-//         }
-//     }
-//     // handle the po's
-//     Abc_NtkForEachPo(pNtk, pObj, i) {
-//         char *name = new char[strlen(Abc_ObjName(pObj))+1]; strcpy(name, Abc_ObjName(pObj));
-//         CirPoGate *gate = new CirPoGate(Abc_ObjId(pObj), 0, Abc_ObjId(Abc_ObjFanin0(pObj)));
-//         gate->setIn0(getGate(Abc_ObjId(Abc_ObjFanin0(pObj))), newFaninComp(pObj, 0));
-//         _poList[iPo++] = gate;
-//         _totGateList[Abc_ObjId( pObj)] = gate;
-//         gate->setName(name);
-//     }
+void
+EcoNtk::parsePI(const string& dir) {
+  ifstream file(dir);
+  assert(file.is_open());
+  string buf;
+  while (getline(file, buf))
+  {
+    // splitting the items in the line by white space
+    vector<string> items = splitLine(buf);
     
-//     // add the fanout information
-//     Abc_NtkForEachObj( pNtk, pObj, i) {
-//         CirGate* gate = getGate(Abc_ObjId(pObj));
-//         if(gate->getType() == PI_GATE || gate->getType() == AIG_GATE) {
-//           for(int j=0; j<Abc_ObjFanoutNum(pObj); ++j)
-//             addFanout(gate, getGate(Abc_ObjId(Abc_ObjFanout(pObj, j))));
-//             // if(gate->getType() == PI_GATE) {
-//             //     for(int j=0; j<Abc_ObjFanoutNum(pObj); ++j) {
-//             //         static_cast<CirPiGate*>(gate)->addOut(getGate(Abc_ObjId(Abc_ObjFanout(pObj, j))));
-//             //     }
-//             // }
-//             // else {
-//             //     for(int j=0; j<Abc_ObjFanoutNum(pObj); ++j) {
-//             //         static_cast<CirAigGate*>(gate)->addOut(getGate(Abc_ObjId(Abc_ObjFanout(pObj, j))));
-//             //     }
-//             // }
-//         }
-//     }
+    // if the line is not empty
+    if(!items.empty()) {
+      string firstTok = items.at(0);
+      if(firstTok == "input") {
+        vector<string> PIs = getWiresPorts(buf);
+        for(const auto& PI : PIs) {
+          EcoGate* gate = new EcoGate("pi", PI);
+          _PIList.push_back(gate);
+          _gateName2Gate[PI] = gate;
+          GateVec.push_back(gate);
+        }
+      }
+    }
+  }
+  file.close();
+  EcoGate* const0 = new EcoGate("const0", "1'b0");
+  _gateName2Gate["1'b0"] = const0;
+  _PIList.push_back(const0);
+  EcoGate* const1 = new EcoGate("const1", "1'b1");
+  _gateName2Gate["1'b1"] = const1;
+  _PIList.push_back(const1);
+}
 
-//     genDfsList();
-//     printNetlist();
-//     // checkFloatList();
-//     // checkUnusedList();
-// }
+void
+EcoNtk::readNtkFile(const string& dir) {
+  parsePI(dir);
+  parsePrimitiveGates(dir);
+  parsePO(dir);
+  genConnection();
+  rewriteDesign(dir); // rewrite the design format so that abc can read it
+  abcReadFile(); // read the rewrited file using abc
+  // for(auto& gate : GateVec) {
+  //   gate->reportGate();
+  // }
+  // for(auto& gate : _POList) {
+  //   gate->reportGate();
+  // }
+}
 
 }
 }

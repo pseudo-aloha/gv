@@ -46,7 +46,7 @@ class CirMgr {
 
 public:
     CirMgr() : _piList(0), _poList(0), _totGateList(0), _fanoutInfo(0),
-               _abcMgr(new gv::engine::AbcMgr()), _ysyMgr(new YosysMgr()), _fileName("") {cout << "constructor called" << endl;}
+               _abcMgr(new gv::engine::AbcMgr()), _ysyMgr(new YosysMgr()), _fileName("") {}
 
     virtual ~CirMgr() { deleteCircuit(); }
 
