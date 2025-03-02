@@ -3,7 +3,6 @@
 
 #include "ecoNtk.h"
 #include "base/abc/abc.h"
-#include "proof/fraig/fraig.h"
 #include <iostream>
 #include <string>
 #include <cassert>
@@ -47,7 +46,7 @@ EcoGate::EcoGate(string gateType, string gateName) {
   _gateName = gateName;
   if(gateType == "const0")
     _gateType = ECO_CONST_0_GATE;
-  if(gateType == "const1")
+  else if(gateType == "const1")
     _gateType = ECO_CONST_1_GATE;
   else if(gateType == "and")
     _gateType = ECO_AND_GATE;
@@ -85,6 +84,12 @@ EcoGate*
 EcoNtk::getGateByName(const string& name) {
   if(!_gateName2Gate.count(name)) return nullptr;
   return _gateName2Gate.at(name);
+}
+
+// get the const0 gate
+EcoGate*
+EcoNtk::getConst0Gate() {
+  return getGateByName("1'b0");
 }
 
 // get po by po name
@@ -327,24 +332,10 @@ EcoNtk::parsePrimitiveGates(const string& dir) {
 void
 EcoNtk::abcReadFile() {
   // abc read file parameters
-  Fraig_Params_t Params, * pParams = &Params;
   int fAllNodes = 1;
-  int fExdc = 0;
   Abc_Obj_t * pObj;
   Abc_Obj_t * pNode;
   int i;
-  memset( pParams, 0, sizeof(Fraig_Params_t) );
-  pParams->nPatsRand  = 2048; // the number of words of random simulation info
-  pParams->nPatsDyna  = 2048; // the number of words of dynamic simulation info
-  pParams->nBTLimit   =  100; // the max number of backtracks to perform
-  pParams->fFuncRed   =    1; // performs only one level hashing
-  pParams->fFeedBack  =    1; // enables solver feedback
-  pParams->fDist1Pats =    1; // enables distance-1 patterns
-  pParams->fDoSparse  =    1; // performs equiv tests for sparse functions
-  pParams->fChoicing  =    0; // enables recording structural choices
-  pParams->fTryProve  =    0; // tries to solve the final miter
-  pParams->fVerbose   =    0; // the verbosiness flag
-  pParams->fVerboseP  =    0; // the verbosiness flag
 
   Abc_Ntk_t* pNtk = Io_Read( "/home/yenlu_mepu/gv/tmp.v", IO_FILE_VERILOG, 0, 0 );
   assert(pNtk && Abc_NtkCheck(pNtk)); // check that the read circuit is OK
@@ -357,17 +348,26 @@ EcoNtk::abcReadFile() {
   
   Abc_NtkForEachObj( pNtk, pNode, i )
   {
-      string objName = Abc_ObjName( pNode );
-      
-      if(!pNode->pCopy)
-        continue;
-      
-      CirGate* cirGate = cirV->getGate(Abc_ObjId(Abc_ObjRegular(pNode->pCopy)));
-      if(Abc_ObjType(Abc_ObjRegular(pNode->pCopy)) != ABC_OBJ_CONST1) {
-        EcoGate* ecoGate = getGateByName(objName);
-        ecoGate->ecoGateV = cirGate;
-        ecoGate->ecoGateVComp = Abc_ObjIsComplement(pNode->pCopy);
-      }
+    string objName = Abc_ObjName( pNode );
+    
+    if(!pNode->pCopy)
+      continue;
+    
+    CirGate* cirGate;
+    EcoGate* ecoGate;
+    if(Abc_ObjType(Abc_ObjRegular(pNode->pCopy)) != ABC_OBJ_CONST1) {
+      cirV->getGate(Abc_ObjId(Abc_ObjRegular(pNode->pCopy)));
+      ecoGate = getGateByName(objName);
+      ecoGate->ecoGateVComp = Abc_ObjIsComplement(pNode->pCopy);
+    }
+    else { // handle the const gate case (const node name in abc is not the same as in my data structure )
+      cirV->getGate(0); // get the const 0 gate of cirV
+      ecoGate = getConst0Gate();
+      ecoGate->ecoGateVComp = !Abc_ObjIsComplement(pNode->pCopy); // since abc's const gate is const1 and ours is const0
+    }
+    ecoGate->ecoGateV = cirGate;
+    ecoGate->_pAbcNode = pNode->pCopy;
+    _abcObj2EcoGate[Abc_ObjRegular(pNode->pCopy)].insert(ecoGate);
   }
 }
 

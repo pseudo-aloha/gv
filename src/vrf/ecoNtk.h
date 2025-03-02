@@ -43,6 +43,7 @@ class EcoCir {
 // used to store the primitive gate level network
 class EcoNtk {
   public:
+    friend class EcoMgr;
     // constructor
     EcoNtk () { cirV = new EcoCir(); }
     ~EcoNtk () { delete cirV; }
@@ -56,14 +57,21 @@ class EcoNtk {
     void parseGate(const vector<string>& line);
     void genConnection();
 
+    // set functions
+    void setGateByAbcNode(Abc_Obj_t* pObj, EcoGate* pEcoGate) { _abcObj2EcoGate[Abc_ObjRegular(pObj)].insert(pEcoGate); }
+
+
     // get functions
     EcoGate* getGateByName(const string& name);
+    unordered_set<EcoGate*> getGateByAbcNode(Abc_Obj_t* pObj) { if(!_abcObj2EcoGate.count(Abc_ObjRegular(pObj))) return {}; return _abcObj2EcoGate.at(Abc_ObjRegular(pObj)); }
+    EcoGate* getConst0Gate();
     EcoGate* getPoByName(const string& name);
     Abc_Ntk_t* getAbcNtk() { return _pAbcNtk; }
   private:
     unordered_set<string> gateTypeStrings = {"and", "or", "nand", "nor", "not", "buf", "xor", "xnor"};
     unordered_map<string, EcoGate*> _gateName2Gate;
     unordered_map<string, EcoGate*> _poName2PoGate;
+    unordered_map<Abc_Obj_t*, unordered_set<EcoGate*>> _abcObj2EcoGate;
     // PI list
     vector<EcoGate*> _PIList;
     // PO list
@@ -86,6 +94,7 @@ class EcoGate {
     unsigned getGateType() { return _gateType; }
     unsigned getNumFanins() { return _fanins.size(); }
     void reportGate();
+    bool getInv() { return ecoGateVComp; }
   private:
     // Use to represent the primitive gate
     enum EcoGateType {
@@ -102,11 +111,12 @@ class EcoGate {
       ECO_PI_GATE = 10,
       ECO_PO_GATE = 11
     };
-    unsigned _gateType;
-    string _gateName;
+    unsigned _gateType; // store the gate type e.g. and / or / not
+    string _gateName; // store the gate name (the output net name)
     vector<EcoGate*> _fanins;
     vector<string> _faninNames;
     CirGate* ecoGateV;
+    Abc_Obj_t* _pAbcNode;
     bool ecoGateVComp;
 };
 
