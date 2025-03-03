@@ -1,0 +1,4 @@
+cirr -v /home/yenlu_mepu/gv/design/normal/2021_cad/test02/r2.v
+set sys vrf
+func eco -folder /home/yenlu_mepu/gv/design/normal/2021_cad/test12/
+quit -f

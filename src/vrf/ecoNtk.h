@@ -66,6 +66,12 @@ class EcoNtk {
     unordered_set<EcoGate*> getGateByAbcNode(Abc_Obj_t* pObj) { if(!_abcObj2EcoGate.count(Abc_ObjRegular(pObj))) return {}; return _abcObj2EcoGate.at(Abc_ObjRegular(pObj)); }
     EcoGate* getConst0Gate();
     EcoGate* getPoByName(const string& name);
+    EcoGate* getGate(unsigned id) { return GateVec.at(id); }
+    EcoGate* getPi(unsigned id) { return _PIList.at(id); }
+    EcoGate* getPo(unsigned id) { return _POList.at(id); }
+    unsigned getNumGates() { return GateVec.size(); }
+    unsigned getNumPis() { return _PIList.size(); }
+    unsigned getNumPos() { return _POList.size(); }
     Abc_Ntk_t* getAbcNtk() { return _pAbcNtk; }
   private:
     unordered_set<string> gateTypeStrings = {"and", "or", "nand", "nor", "not", "buf", "xor", "xnor"};
@@ -90,13 +96,16 @@ class EcoGate {
     EcoGate(string gateType, string gateName);
     ~EcoGate();
     string getGateName() { return _gateName; }
+    string getGateFullName() { return _gateName + (_isOld ? "_O" : "_N"); }
     string getGateTypeName();
     unsigned getGateType() { return _gateType; }
     unsigned getNumFanins() { return _fanins.size(); }
+    EcoGate* getFanin(unsigned i) { if(i>=_fanins.size()) return nullptr; return _fanins.at(i); }
     void reportGate();
+    bool isOld() { return _isOld; }
+    void setOld(bool isOld) { _isOld = isOld; }
     bool getInv() { return ecoGateVComp; }
-  private:
-    // Use to represent the primitive gate
+
     enum EcoGateType {
       ECO_CONST_0_GATE = 0,
       ECO_CONST_1_GATE = 1,
@@ -111,6 +120,9 @@ class EcoGate {
       ECO_PI_GATE = 10,
       ECO_PO_GATE = 11
     };
+  private:
+    // Use to represent the primitive gate
+    
     unsigned _gateType; // store the gate type e.g. and / or / not
     string _gateName; // store the gate name (the output net name)
     vector<EcoGate*> _fanins;
@@ -118,6 +130,7 @@ class EcoGate {
     CirGate* ecoGateV;
     Abc_Obj_t* _pAbcNode;
     bool ecoGateVComp;
+    bool _isOld;
 };
 
 

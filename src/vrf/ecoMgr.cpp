@@ -12,15 +12,25 @@ void
 EcoMgr::doEco(const string& oldDesignName, const string& newDesignName) {
   // read designs
   readDesigns(oldDesignName, newDesignName);
+
+  // do fraig
   doFraig();
+
+  // do matching
+
+  // generate patch
+
 }
 
 // read input designs
 void
 EcoMgr::readDesigns(const string& oldDesignName, const string& newDesignName) {
   _oldNtk->readNtkFile(oldDesignName);
-  cout << "------------------------------------" << endl;
   _newNtk->readNtkFile(newDesignName);
+  for(size_t i=0; i<_oldNtk->getNumGates(); i++)
+    _oldNtk->getGate(i)->setOld(true);
+  for(size_t i=0; i<_newNtk->getNumGates(); i++)
+    _newNtk->getGate(i)->setOld(false);
 }
 
 void Net2PO( Abc_Ntk_t* pNtk)
@@ -71,20 +81,16 @@ EcoMgr::doFraig() {
   Abc_Obj_t * pNode;
   int i;
   Abc_NtkForEachObj( pNtkOld, pNode, i ) {
-    // if(!pNode->pCopy) continue;
     auto gates = _oldNtk->getGateByAbcNode(Abc_ObjRegular(pNode));
     for(const auto& gate : gates) {
-      // cout << pNode->pCopy << " name " << gate->getGateName() << endl;
       _oldNtk->setGateByAbcNode(Abc_ObjRegular(pNode->pCopy), gate);
     }
   }
 // cout << "-----" << endl;
   Abc_NtkForEachObj( pNtkNew, pNode, i ) {
-    // if(!pNode->pCopy) continue;
     auto gates = _newNtk->getGateByAbcNode(Abc_ObjRegular(pNode));
     for(const auto& gate : gates) {
       _newNtk->setGateByAbcNode(Abc_ObjRegular(pNode->pCopy), gate);
-      // cout << pNode->pCopy << " name " << gate->getGateName() << endl;
     }
   }
   unordered_map<string, Abc_Obj_t *> name2Gate;
@@ -125,7 +131,7 @@ EcoMgr::doFraig() {
 
 
   // step 3 record the merge information
-  unordered_map<Abc_Obj_t*, vector<pair<gv::cir::EcoGate*, bool>>> EqClass;
+  unordered_map<Abc_Obj_t*, vector<pair<gv::cir::EcoGate*, bool>>> oldEqClass, newEqClass;
   Abc_NtkForEachPo( pNtkMiterFraig, pNode, i ) {
     string objName = Abc_ObjName(pNode);
     if(objName.substr(objName.length()-4, 4) != "_INT") continue;
@@ -136,18 +142,45 @@ EcoMgr::doFraig() {
     auto newGates = _newNtk->getGateByAbcNode(Abc_ObjRegular(pMiterNode));
     bool inv = Abc_ObjFaninC0(pNode);
     for(auto g : oldGates)
-      EqClass[Abc_ObjRegular(Abc_ObjFanin0(pNode))].push_back({g, inv ^ g->getInv()});
+      oldEqClass[Abc_ObjRegular(Abc_ObjFanin0(pNode))].push_back({g, inv ^ g->getInv()});
 
     for(auto g : newGates)
-      EqClass[Abc_ObjRegular(Abc_ObjFanin0(pNode))].push_back({g, inv ^ g->getInv()});
+      newEqClass[Abc_ObjRegular(Abc_ObjFanin0(pNode))].push_back({g, inv ^ g->getInv()});
   }
   cout << "Eq class" << endl;
-  for(const auto&[_, gates] : EqClass) {
-    if(gates.size() < 2) continue;
-    for(const auto& [g, inv] : gates)
-      cout << g->getGateName() << "(" << (inv ? "inv" : "pos") << ") ";
+  for(const auto&[pEqNode, oldGates] : oldEqClass) {
+    if(!newEqClass.count(pEqNode)) continue;
+    auto& newGates = newEqClass.at(pEqNode);
+    for(const auto&[oldGate, oldGateComp] : oldGates) {
+      cout << oldGate->getGateFullName() << (oldGateComp ? "(inv)" : "(pos)") << " ";
+      for(const auto&[newGate, newGateComp] : newGates) {
+        if((oldGateComp ^ newGateComp) == 0) {
+          _mergeTable[oldGate].insert(newGate);
+          _mergeTable[newGate].insert(oldGate);
+        }
+        else {
+          _invMergeTable[oldGate].insert(newGate);
+          _invMergeTable[newGate].insert(oldGate);
+        }
+      }
+    }
+    for(const auto&[newGate, newGateComp] : newGates)
+      cout << newGate->getGateFullName() << (newGateComp ? "(inv)" : "(pos)") << " ";
     cout << endl;
   }
+
+  // merge constant and PIs
+  for(size_t i=0; i<_oldNtk->getNumPis(); i++) {
+    auto oldGate = _oldNtk->getPi(i);
+    auto newGate = _newNtk->getPi(i);
+    
+    _mergeTable[oldGate].insert(newGate);
+    _mergeTable[newGate].insert(oldGate);
+  }
+  // for(size_t i=0; i<_oldNtk->getNumPos(); i++)
+  //   dfs(_oldNtk->getPo(i));
+  // for(size_t i=0; i<_newNtk->getNumPos(); i++)
+  //   dfs(_newNtk->getPo(i));
 }
 
 // end of namespace gv::eco

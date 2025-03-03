@@ -272,9 +272,17 @@ EcoNtk::rewriteDesign(const string& dir) {
         }
         else {
           if(firstTok == "wire") {
-            vector<string> lineWires = getWiresPorts(buf);
-            for(const auto& w : lineWires)
-              wires.insert(w);
+            while(1) {
+              vector<string> lineWires = getWiresPorts(buf);
+              for(const auto& w : lineWires)
+                wires.insert(w);
+              while(buf[buf.size()-1] == ' ')
+                buf.pop_back();
+              if(buf[buf.size()-1] == ';')
+                break;
+              fout << buf << endl;
+              getline(file, buf);
+            }
           }
           fout << buf << endl;
         }
@@ -309,11 +317,6 @@ EcoNtk::parsePrimitiveGates(const string& dir) {
           gate->_faninNames.push_back(nets.at(i));
         _gateName2Gate[gateName] = gate;
         GateVec.push_back(gate);
-        // cout << gateType << " : ";
-        // for(auto& net : nets) {
-        //   cout << net << " ";
-        // }
-        // cout << endl;
       }
       else if(firstTok == "assign") { // deal with assigns
         assert(items.size() >= 3);
@@ -376,6 +379,9 @@ EcoNtk::genConnection() {
   for(auto& gate : GateVec) {
     for(auto& faninName : gate->_faninNames) {
       EcoGate* fanin = getGateByName(faninName);
+      if(fanin == nullptr) {
+        cout << "err " << faninName << endl;
+      }
       assert(fanin != nullptr);
       gate->_fanins.push_back(fanin);
     }
@@ -396,13 +402,20 @@ EcoNtk::parsePO(const string& dir) {
     if(!items.empty()) {
       string firstTok = items.at(0);
       if(firstTok == "output") {
-        vector<string> POs = getWiresPorts(buf);
-        for(const auto& PO : POs) {
-          EcoGate* gate = new EcoGate("po", PO);
-          gate->_faninNames.push_back(PO);
-          gate->_fanins.push_back(_gateName2Gate.at(PO));
-          _POList.push_back(gate);
-          _poName2PoGate[PO] = gate;
+        while(1) {
+          vector<string> POs = getWiresPorts(buf);
+          for(const auto& PO : POs) {
+            EcoGate* gate = new EcoGate("po", PO);
+            gate->_faninNames.push_back(PO);
+            gate->_fanins.push_back(_gateName2Gate.at(PO));
+            _POList.push_back(gate);
+            _poName2PoGate[PO] = gate;
+          }
+          while(buf[buf.size()-1] == ' ')
+            buf.pop_back();
+          if(buf[buf.size()-1] == ';')
+            break;
+          getline(file, buf);
         }
       }
     }
@@ -424,12 +437,19 @@ EcoNtk::parsePI(const string& dir) {
     if(!items.empty()) {
       string firstTok = items.at(0);
       if(firstTok == "input") {
-        vector<string> PIs = getWiresPorts(buf);
-        for(const auto& PI : PIs) {
-          EcoGate* gate = new EcoGate("pi", PI);
-          _PIList.push_back(gate);
-          _gateName2Gate[PI] = gate;
-          GateVec.push_back(gate);
+        while(1) {
+          vector<string> PIs = getWiresPorts(buf);
+          for(const auto& PI : PIs) {
+            EcoGate* gate = new EcoGate("pi", PI);
+            _PIList.push_back(gate);
+            _gateName2Gate[PI] = gate;
+            GateVec.push_back(gate);
+          }
+          while(buf[buf.size()-1] == ' ')
+            buf.pop_back();
+          if(buf[buf.size()-1] == ';')
+            break;
+          getline(file, buf);
         }
       }
     }
@@ -441,6 +461,9 @@ EcoNtk::parsePI(const string& dir) {
   EcoGate* const1 = new EcoGate("const1", "1'b1");
   _gateName2Gate["1'b1"] = const1;
   _PIList.push_back(const1);
+  sort(_PIList.begin(), _PIList.end(), [](EcoGate* g1, EcoGate* g2) {
+    return (g1->getGateName() < g2->getGateName());
+  });
 }
 
 void
