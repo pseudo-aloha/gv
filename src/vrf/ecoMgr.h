@@ -28,7 +28,9 @@ public:
   // main step function
   void doEco(const string& oldDesignName, const string& newDesignName);
   void readDesigns(const string& oldDesignName, const string& newDesignName);
-  void doFraig();
+  void doFraig(); // conduct abc fraig on the designs
+  void doMatching();
+
 
   // dfs
   void dfs(gv::cir::EcoGate* g) {

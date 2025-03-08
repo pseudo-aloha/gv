@@ -17,6 +17,7 @@ EcoMgr::doEco(const string& oldDesignName, const string& newDesignName) {
   doFraig();
 
   // do matching
+  doMatching();
 
   // generate patch
 
@@ -182,6 +183,20 @@ EcoMgr::doFraig() {
   // for(size_t i=0; i<_newNtk->getNumPos(); i++)
   //   dfs(_newNtk->getPo(i));
 }
+
+void
+EcoMgr::doMatching() {
+  
+  
+  // build cut hashing table
+
+  // enumerate cuts
+  _oldNtk->enumerateCuts(4);
+  _newNtk->enumerateCuts(4);
+
+  // output side matching
+}
+
 
 // end of namespace gv::eco
 }}

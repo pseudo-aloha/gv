@@ -19,11 +19,33 @@ class EcoNtk;
 class EcoGate;
 class EcoCir;
 class EcoCirGate;
+class EcoCut;
 }}
 
 namespace gv {
 namespace cir {
-// inherited from CirMgr, modified to store some extra information for ECO usage
+
+// Cuts in the EcoNtk
+class EcoCut {
+public:
+  EcoCut() : _root(nullptr), _leaves({}) {}
+  EcoCut(EcoGate* root) : _leaves({}) { _root = root; }
+  EcoCut(EcoGate* root, vector<EcoGate*> leaves) { _root = root; _leaves = leaves; }
+  ~EcoCut() { _root = nullptr; _leaves.clear(); }
+  void setRoot(EcoGate* g) { _root = g; }
+  void addLeaf(EcoGate* g) { _leaves.push_back(g); }
+  void appendLeaves(vector<EcoGate*> leaves) { _leaves.insert(_leaves.end(), leaves.begin(), leaves.end()); }
+  void popLeaves(int n) { for(size_t i=0; i<n; i++) _leaves.pop_back(); }
+  EcoGate* const getRoot() { return _root; }
+  vector<EcoGate*> const getLeaves() { return _leaves; }
+  unsigned getCutSize() { return _leaves.size(); }
+  void reportCut();
+private:
+  EcoGate* _root;
+  vector<EcoGate*> _leaves;
+};
+
+// Wrap CirMgr, modified to store some extra information for ECO usage
 class EcoCir {
   
   public:
@@ -57,6 +79,10 @@ class EcoNtk {
     void parseGate(const vector<string>& line);
     void genConnection();
 
+    // cut enumeration function
+    void enumerateCuts(unsigned k); // enumerate k-feasible cuts
+    vector<EcoCut*> enumerateCutsRec(const unsigned& k, EcoGate* g); // enumerate k-feasible cuts
+
     // set functions
     void setGateByAbcNode(Abc_Obj_t* pObj, EcoGate* pEcoGate) { _abcObj2EcoGate[Abc_ObjRegular(pObj)].insert(pEcoGate); }
 
@@ -75,9 +101,16 @@ class EcoNtk {
     Abc_Ntk_t* getAbcNtk() { return _pAbcNtk; }
   private:
     unordered_set<string> gateTypeStrings = {"and", "or", "nand", "nor", "not", "buf", "xor", "xnor"};
+    // map that records gate name 2 gates
     unordered_map<string, EcoGate*> _gateName2Gate;
     unordered_map<string, EcoGate*> _poName2PoGate;
+
+    // used for fraig
     unordered_map<Abc_Obj_t*, unordered_set<EcoGate*>> _abcObj2EcoGate;
+
+    // get the cuts from gate
+    unordered_map<EcoGate*, vector<EcoCut*>> _gate2Cuts;
+
     // PI list
     vector<EcoGate*> _PIList;
     // PO list
@@ -106,6 +139,12 @@ class EcoGate {
     void setOld(bool isOld) { _isOld = isOld; }
     bool getInv() { return ecoGateVComp; }
 
+    // traversal things
+    static void setGlobalTrav() { _globalTravFlag++; }
+    void setGlobalTrav(unsigned i) { _globalTravFlag += i; }
+    void setToGlobalTrav() { _travFlag = _globalTravFlag; }
+    bool isGlobalTrav() { return (_travFlag == _globalTravFlag);}
+
     enum EcoGateType {
       ECO_CONST_0_GATE = 0,
       ECO_CONST_1_GATE = 1,
@@ -121,16 +160,25 @@ class EcoGate {
       ECO_PO_GATE = 11
     };
   private:
-    // Use to represent the primitive gate
-    
+    // Gate attributes
     unsigned _gateType; // store the gate type e.g. and / or / not
     string _gateName; // store the gate name (the output net name)
+
+    // Gate fanins
     vector<EcoGate*> _fanins;
     vector<string> _faninNames;
-    CirGate* ecoGateV;
+
+    // internal gate
+    CirGate* ecoGateV; // internal AIG node that maps to the EcoGate
+    bool ecoGateVComp; // record if the gate's polation when mapping to the internal AIG node
     Abc_Obj_t* _pAbcNode;
-    bool ecoGateVComp;
-    bool _isOld;
+
+    // traverse flag
+    static unsigned _globalTravFlag; // global trav flag, shared by all the gates. Used to check if the gate is traversed (increment it before traversing)
+    unsigned _travFlag;
+    
+    
+    bool _isOld; // record gate belongs to old/new circuiit
 };
 
 

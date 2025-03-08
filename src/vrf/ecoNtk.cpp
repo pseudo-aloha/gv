@@ -7,6 +7,8 @@
 #include <string>
 #include <cassert>
 
+unsigned gv::cir::EcoGate::_globalTravFlag = 0;
+
 namespace gv {
 namespace cir {
 // print the gate type name
@@ -43,6 +45,7 @@ EcoGate::getGateTypeName() {
 }
 
 EcoGate::EcoGate(string gateType, string gateName) {
+  _travFlag = 0;
   _gateName = gateName;
   if(gateType == "const0")
     _gateType = ECO_CONST_0_GATE;
