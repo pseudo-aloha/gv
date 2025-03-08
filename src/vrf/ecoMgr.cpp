@@ -189,12 +189,15 @@ EcoMgr::doMatching() {
   
   
   // build cut hashing table
-
+  _pNpnHash = new EcoNPNHash(2, 4); // we compute the npn cut hash from 2 <= cut size <= 4
+  _pNpnHash->computeNpnHash();
+  
   // enumerate cuts
   _oldNtk->enumerateCuts(4);
   _newNtk->enumerateCuts(4);
 
   // output side matching
+  doOutputSideMatching();
 }
 
 

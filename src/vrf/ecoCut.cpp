@@ -10,7 +10,7 @@
 namespace gv {
 namespace cir {
 
-
+// report the cut's root and leaf names
 void
 EcoCut::reportCut() {
     cout << "root : " << _root->getGateName() << endl;
@@ -34,7 +34,6 @@ EcoNtk::enumerateCuts(unsigned k) {
 void
 getCutCombs(unsigned faninIdx, EcoGate* root, vector<EcoGate*>& leaves, vector<EcoCut*>& cuts, vector<vector<EcoCut*>>& faninCutVec, const unsigned& k) {
     unsigned nFanins = faninCutVec.size();
-    // cout << "faninidx" << faninIdx << endl;
     if(faninIdx == nFanins) {
         if(leaves.size() <= k) {
             EcoCut* cut = new EcoCut(root, leaves);
