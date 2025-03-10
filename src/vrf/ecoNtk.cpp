@@ -44,7 +44,7 @@ EcoGate::getGateTypeName() {
   }
 }
 
-EcoGate::EcoGate(string gateType, string gateName) {
+EcoGate::EcoGate(string gateType, string gateName) : ecoGateVComp(false), ecoGateV(nullptr), _pAbcNode(nullptr) {
   _travFlag = 0;
   _gateName = gateName;
   if(gateType == "const0")
@@ -362,19 +362,21 @@ EcoNtk::abcReadFile() {
     CirGate* cirGate;
     EcoGate* ecoGate;
     if(Abc_ObjType(Abc_ObjRegular(pNode->pCopy)) != ABC_OBJ_CONST1) {
-      cirV->getGate(Abc_ObjId(Abc_ObjRegular(pNode->pCopy)));
+      cirGate = cirV->getGate(Abc_ObjId(Abc_ObjRegular(pNode->pCopy)));
       ecoGate = getGateByName(objName);
-      ecoGate->ecoGateVComp = Abc_ObjIsComplement(pNode->pCopy);
+      ecoGate->ecoGateVComp = Abc_ObjIsComplement(pNode->pCopy) ? true : false;
     }
     else { // handle the const gate case (const node name in abc is not the same as in my data structure )
-      cirV->getGate(0); // get the const 0 gate of cirV
+      cirGate = cirV->getGate(0); // get the const 0 gate of cirV
       ecoGate = getConst0Gate();
-      ecoGate->ecoGateVComp = !Abc_ObjIsComplement(pNode->pCopy); // since abc's const gate is const1 and ours is const0
+      ecoGate->ecoGateVComp = Abc_ObjIsComplement(pNode->pCopy) ? false : true; // since abc's const gate is const1 and ours is const0
     }
     ecoGate->ecoGateV = cirGate;
     ecoGate->_pAbcNode = pNode->pCopy;
     _abcObj2EcoGate[Abc_ObjRegular(pNode->pCopy)].insert(ecoGate);
   }
+  for(size_t i=0; i<getNumPos(); i++)
+    getPo(i)->ecoGateV = getPo(i)->getFanin(0)->ecoGateV;
 }
 
 void

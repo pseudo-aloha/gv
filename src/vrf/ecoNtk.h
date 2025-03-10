@@ -30,19 +30,18 @@ class EcoCut {
 public:
   EcoCut() : _root(nullptr), _leaves({}) {}
   EcoCut(EcoGate* root) : _leaves({}) { _root = root; }
-  EcoCut(EcoGate* root, vector<EcoGate*> leaves) { _root = root; _leaves = leaves; }
+  EcoCut(EcoGate* root, unordered_set<EcoGate*> leaves) { _root = root; _leaves = leaves; }
+  EcoCut(EcoGate* root, unordered_map<EcoGate*, int> leaves) { _root = root; for(auto&[leaf, cnt] : leaves) _leaves.insert(leaf); }
   ~EcoCut() { _root = nullptr; _leaves.clear(); }
   void setRoot(EcoGate* g) { _root = g; }
-  void addLeaf(EcoGate* g) { _leaves.push_back(g); }
-  void appendLeaves(vector<EcoGate*> leaves) { _leaves.insert(_leaves.end(), leaves.begin(), leaves.end()); }
-  void popLeaves(int n) { for(size_t i=0; i<n; i++) _leaves.pop_back(); }
+  void addLeaf(EcoGate* g) { _leaves.insert(g); }
   EcoGate* const getRoot() { return _root; }
-  vector<EcoGate*> const getLeaves() { return _leaves; }
+  unordered_set<EcoGate*> const getLeaves() { return _leaves; }
   unsigned getCutSize() { return _leaves.size(); }
   void reportCut();
 private:
   EcoGate* _root;
-  vector<EcoGate*> _leaves;
+  unordered_set<EcoGate*> _leaves;
 };
 
 // Wrap CirMgr, modified to store some extra information for ECO usage
@@ -83,6 +82,11 @@ class EcoNtk {
     void enumerateCuts(unsigned k); // enumerate k-feasible cuts
     vector<EcoCut*> enumerateCutsRec(const unsigned& k, EcoGate* g); // enumerate k-feasible cuts
 
+    // cut utils
+    size_t computeCutTT(EcoCut* pCut); // compute the truth table of the cut
+    void writeCutAag(EcoCut* pCut);
+    unordered_set<CirGate*> getCutConeAigs(EcoCut* pCut);
+
     // set functions
     void setGateByAbcNode(Abc_Obj_t* pObj, EcoGate* pEcoGate) { _abcObj2EcoGate[Abc_ObjRegular(pObj)].insert(pEcoGate); }
 
@@ -99,6 +103,7 @@ class EcoNtk {
     unsigned getNumPis() { return _PIList.size(); }
     unsigned getNumPos() { return _POList.size(); }
     Abc_Ntk_t* getAbcNtk() { return _pAbcNtk; }
+    vector<EcoCut*> getGateCuts(EcoGate* g) { if(!_gate2Cuts.count(g)) return {}; return _gate2Cuts.at(g); }
   private:
     unordered_set<string> gateTypeStrings = {"and", "or", "nand", "nor", "not", "buf", "xor", "xnor"};
     // map that records gate name 2 gates
@@ -137,7 +142,8 @@ class EcoGate {
     void reportGate();
     bool isOld() { return _isOld; }
     void setOld(bool isOld) { _isOld = isOld; }
-    bool getInv() { return ecoGateVComp; }
+    bool getAigNodeInv() { return ecoGateVComp; }
+    CirGate* getAigNode() { return ecoGateV; }
 
     // traversal things
     static void setGlobalTrav() { _globalTravFlag++; }

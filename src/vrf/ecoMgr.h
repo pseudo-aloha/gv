@@ -49,11 +49,13 @@ public:
   void doEco(const string& oldDesignName, const string& newDesignName);
   void readDesigns(const string& oldDesignName, const string& newDesignName);
   void doFraig(); // conduct abc fraig on the designs
-  void doMatching();
+  void doMatching(unsigned kFeassible);
 
   // matching functions
   // output side matching functions
   void doOutputSideMatching();
+  void matchOnePo(unsigned ithPo);
+
   // input side prepatch functions
 
   // recycle matching functions

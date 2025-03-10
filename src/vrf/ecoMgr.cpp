@@ -17,7 +17,7 @@ EcoMgr::doEco(const string& oldDesignName, const string& newDesignName) {
   doFraig();
 
   // do matching
-  doMatching();
+  doMatching(6); // enumerate 6-feasible cuts
 
   // generate patch
 
@@ -30,8 +30,13 @@ EcoMgr::readDesigns(const string& oldDesignName, const string& newDesignName) {
   _newNtk->readNtkFile(newDesignName);
   for(size_t i=0; i<_oldNtk->getNumGates(); i++)
     _oldNtk->getGate(i)->setOld(true);
+  for(size_t i=0; i<_oldNtk->getNumPos(); i++) {
+    _oldNtk->getPo(i)->setOld(true);
+  }
   for(size_t i=0; i<_newNtk->getNumGates(); i++)
     _newNtk->getGate(i)->setOld(false);
+  for(size_t i=0; i<_newNtk->getNumPos(); i++)
+    _newNtk->getPo(i)->setOld(false);
 }
 
 void Net2PO( Abc_Ntk_t* pNtk)
@@ -143,17 +148,17 @@ EcoMgr::doFraig() {
     auto newGates = _newNtk->getGateByAbcNode(Abc_ObjRegular(pMiterNode));
     bool inv = Abc_ObjFaninC0(pNode);
     for(auto g : oldGates)
-      oldEqClass[Abc_ObjRegular(Abc_ObjFanin0(pNode))].push_back({g, inv ^ g->getInv()});
+      oldEqClass[Abc_ObjRegular(Abc_ObjFanin0(pNode))].push_back({g, inv ^ g->getAigNodeInv()});
 
     for(auto g : newGates)
-      newEqClass[Abc_ObjRegular(Abc_ObjFanin0(pNode))].push_back({g, inv ^ g->getInv()});
+      newEqClass[Abc_ObjRegular(Abc_ObjFanin0(pNode))].push_back({g, inv ^ g->getAigNodeInv()});
   }
-  cout << "Eq class" << endl;
+  // cout << "Eq class" << endl;
   for(const auto&[pEqNode, oldGates] : oldEqClass) {
     if(!newEqClass.count(pEqNode)) continue;
     auto& newGates = newEqClass.at(pEqNode);
     for(const auto&[oldGate, oldGateComp] : oldGates) {
-      cout << oldGate->getGateFullName() << (oldGateComp ? "(inv)" : "(pos)") << " ";
+      // cout << oldGate->getGateFullName() << (oldGateComp ? "(inv)" : "(pos)") << " ";
       for(const auto&[newGate, newGateComp] : newGates) {
         if((oldGateComp ^ newGateComp) == 0) {
           _mergeTable[oldGate].insert(newGate);
@@ -165,9 +170,9 @@ EcoMgr::doFraig() {
         }
       }
     }
-    for(const auto&[newGate, newGateComp] : newGates)
-      cout << newGate->getGateFullName() << (newGateComp ? "(inv)" : "(pos)") << " ";
-    cout << endl;
+    // for(const auto&[newGate, newGateComp] : newGates)
+    //   cout << newGate->getGateFullName() << (newGateComp ? "(inv)" : "(pos)") << " ";
+    // cout << endl;
   }
 
   // merge constant and PIs
@@ -185,16 +190,16 @@ EcoMgr::doFraig() {
 }
 
 void
-EcoMgr::doMatching() {
+EcoMgr::doMatching(unsigned kFeassible) {
   
   
   // build cut hashing table
   _pNpnHash = new EcoNPNHash(2, 4); // we compute the npn cut hash from 2 <= cut size <= 4
   _pNpnHash->computeNpnHash();
   
-  // enumerate cuts
-  _oldNtk->enumerateCuts(4);
-  _newNtk->enumerateCuts(4);
+  // enumerate k-feasible cuts
+  _oldNtk->enumerateCuts(kFeassible);
+  _newNtk->enumerateCuts(kFeassible);
 
   // output side matching
   doOutputSideMatching();

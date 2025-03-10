@@ -35,6 +35,7 @@ class CirMgr {
     friend class CirComb;
     friend class CirSeq;
     friend class EcoCir;
+    friend class EcoNtk;
 
     enum CirMgrFlag { NO_FEC = 0x1 };
     enum ParsePorts { VARS = 0,
