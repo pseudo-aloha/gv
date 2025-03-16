@@ -24,10 +24,19 @@ public:
   EcoNPNHash() : _cutSizeFrom(2), _cutSizeTo(4) {}
   EcoNPNHash(unsigned cutSizeFrom, unsigned cutSizeTo) : _cutSizeFrom(cutSizeFrom), _cutSizeTo(cutSizeTo) {}
   ~EcoNPNHash() {}
-
+  
+  // pre-compute things
   void computeNpnMatchWays(int k);
   void npnHash(const vector<vector<int>>& npnMatchWays, int i, int k);
   void computeNpnHash();
+
+  // get NPN hash
+  pair<string, vector<int>> getNPNHash(size_t cutTT, unsigned cutSize);
+  pair<string, vector<vector<int>>> getNPNHashFull(size_t cutTT, unsigned simSize);
+
+  // encode function (used to save memory)
+  size_t encodeMatch2SizeT(int outputMatch, vector<int>& inputMatch);
+  pair<int, vector<int>> decodeEncodedSizeTMatch(size_t encode, unsigned cutSize);
 
 private:
   unsigned _cutSizeFrom; // from which we comute the NPN-eq class
@@ -52,6 +61,13 @@ public:
   void doMatching(unsigned kFeassible);
 
   // matching functions
+  // general matching function
+  void matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate); // match the cuts at the gate pair
+  bool match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut);
+  pair<int, vector<int>> getOneMatchWay(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut);
+  vector<size_t> simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vector<int>& comb);
+  bool checkMatchValid(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int outputInv, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch); // function to check that if the matching is indeed valid
+
   // output side matching functions
   void doOutputSideMatching();
   void matchOnePo(unsigned ithPo);
@@ -67,8 +83,18 @@ public:
   unordered_set<gv::cir::EcoGate*> getInvMergedGates(gv::cir::EcoGate* g) { if(!_invMergeTable.count(g)) return {}; return _invMergeTable.at(g); }
   bool isMerged(gv::cir::EcoGate* g) { return (_mergeTable.count(g) || _invMergeTable.count(g)); }
 
+  // cut hashing things
   // compute cut hash table
   void computeCutHashTable();
+  // get NPN class
+  pair<string, vector<int>> getNPNHash(gv::cir::EcoCut* cut);
+
+  // Record RP  Pair
+  void addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) { _RPPair[oldGate] = newGate; }
+  gv::cir::EcoGate* getRPGate(gv::cir::EcoGate* oldGate) { if(!_RPPair.count(oldGate)) return nullptr; return _RPPair.at(oldGate);}
+
+  // generate patch
+  
 
 private:
   gv::cir::EcoNtk* _oldNtk;
@@ -80,6 +106,9 @@ private:
 
   // record the NPN hash information
   EcoNPNHash* _pNpnHash;
+
+  // record the RP pair
+  unordered_map<gv::cir::EcoGate*, gv::cir::EcoGate*> _RPPair; // record the RP pair
 };
 
 }

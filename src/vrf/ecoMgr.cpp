@@ -153,12 +153,12 @@ EcoMgr::doFraig() {
     for(auto g : newGates)
       newEqClass[Abc_ObjRegular(Abc_ObjFanin0(pNode))].push_back({g, inv ^ g->getAigNodeInv()});
   }
-  // cout << "Eq class" << endl;
+  cout << "Eq class" << endl;
   for(const auto&[pEqNode, oldGates] : oldEqClass) {
     if(!newEqClass.count(pEqNode)) continue;
     auto& newGates = newEqClass.at(pEqNode);
     for(const auto&[oldGate, oldGateComp] : oldGates) {
-      // cout << oldGate->getGateFullName() << (oldGateComp ? "(inv)" : "(pos)") << " ";
+      cout << oldGate->getGateFullName() << (oldGateComp ? "(inv)" : "(pos)") << " ";
       for(const auto&[newGate, newGateComp] : newGates) {
         if((oldGateComp ^ newGateComp) == 0) {
           _mergeTable[oldGate].insert(newGate);
@@ -170,9 +170,9 @@ EcoMgr::doFraig() {
         }
       }
     }
-    // for(const auto&[newGate, newGateComp] : newGates)
-    //   cout << newGate->getGateFullName() << (newGateComp ? "(inv)" : "(pos)") << " ";
-    // cout << endl;
+    for(const auto&[newGate, newGateComp] : newGates)
+      cout << newGate->getGateFullName() << (newGateComp ? "(inv)" : "(pos)") << " ";
+    cout << endl;
   }
 
   // merge constant and PIs
@@ -198,11 +198,17 @@ EcoMgr::doMatching(unsigned kFeassible) {
   _pNpnHash->computeNpnHash();
   
   // enumerate k-feasible cuts
-  _oldNtk->enumerateCuts(kFeassible);
-  _newNtk->enumerateCuts(kFeassible);
+  _oldNtk->enumerateCuts(kFeassible, this);
+  _newNtk->enumerateCuts(kFeassible, this);
 
   // output side matching
   doOutputSideMatching();
+
+
+  // report RP pairs
+  for(auto[oldGate, newGate] : _RPPair) {
+    cout << oldGate->getGateFullName() << " -> " << newGate->getGateFullName() << endl;
+  }
 }
 
 

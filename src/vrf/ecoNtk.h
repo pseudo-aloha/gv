@@ -23,25 +23,45 @@ class EcoCut;
 }}
 
 namespace gv {
+  namespace eco {
+    class EcoMgr;
+  }}
+
+namespace gv {
 namespace cir {
 
 // Cuts in the EcoNtk
 class EcoCut {
 public:
-  EcoCut() : _root(nullptr), _leaves({}) {}
-  EcoCut(EcoGate* root) : _leaves({}) { _root = root; }
-  EcoCut(EcoGate* root, unordered_set<EcoGate*> leaves) { _root = root; _leaves = leaves; }
-  EcoCut(EcoGate* root, unordered_map<EcoGate*, int> leaves) { _root = root; for(auto&[leaf, cnt] : leaves) _leaves.insert(leaf); }
-  ~EcoCut() { _root = nullptr; _leaves.clear(); }
+  // consturctors / destructors
+  // EcoCut() : _root(nullptr), _leaves({}), _signature("") {}
+  // EcoCut(EcoGate* root) : _leaves({}), _signature("") { _root = root; }
+  EcoCut(EcoGate* root, unordered_set<EcoGate*> leaves) : _signature("") { _root = root; _leaves = leaves; }
+  EcoCut(EcoGate* root, unordered_map<EcoGate*, int> leaves) : _signature("") { _root = root; for(auto&[leaf, cnt] : leaves) _leaves.insert(leaf); }
+  ~EcoCut() { _root = nullptr; _leaves.clear(); _signature.clear(); }
   void setRoot(EcoGate* g) { _root = g; }
   void addLeaf(EcoGate* g) { _leaves.insert(g); }
+  void setSig(const string& sig) { _signature = sig; }
+
+  // get functions
   EcoGate* const getRoot() { return _root; }
   unordered_set<EcoGate*> const getLeaves() { return _leaves; }
-  unsigned getCutSize() { return _leaves.size(); }
+  unsigned getCutSize() const { return _leaves.size(); }
+  static unsigned getMaxCutsPerNode() { return _maxCutsPerNode; }
+  string getSig() { return _signature; }
+  unsigned getNumMergedLeaves() {return _numMergedLeaves;}
+
+  void setNumMergedLeaves(unsigned i) { _numMergedLeaves = i; };
+
+  // report functions
   void reportCut();
+
 private:
   EcoGate* _root;
   unordered_set<EcoGate*> _leaves;
+  static unsigned _maxCutsPerNode;
+  string _signature;
+  unsigned _numMergedLeaves;
 };
 
 // Wrap CirMgr, modified to store some extra information for ECO usage
@@ -79,13 +99,15 @@ class EcoNtk {
     void genConnection();
 
     // cut enumeration function
-    void enumerateCuts(unsigned k); // enumerate k-feasible cuts
-    vector<EcoCut*> enumerateCutsRec(const unsigned& k, EcoGate* g); // enumerate k-feasible cuts
+    void enumerateCuts(unsigned k, gv::eco::EcoMgr* pEco); // enumerate k-feasible cuts
+    vector<EcoCut*> enumerateCutsRec(const unsigned& k, EcoGate* g, gv::eco::EcoMgr* pEco); // enumerate k-feasible cuts
+    void getCutCombs(unsigned faninIdx, EcoGate* root, unordered_map<EcoGate*, int>& leaves, vector<EcoCut*>& cuts, vector<vector<EcoCut*>>& faninCutVec, const unsigned& k, gv::eco::EcoMgr* pEco);
+    bool checkCut(EcoCut* pCut); // rule out the invalid cuts
+    bool checkCutRec(EcoCut* pCut, EcoGate* g, bool isSelf); // rule out the invalid cuts
 
     // cut utils
     size_t computeCutTT(EcoCut* pCut); // compute the truth table of the cut
-    void writeCutAag(EcoCut* pCut);
-    unordered_set<CirGate*> getCutConeAigs(EcoCut* pCut);
+    size_t computeCutTTWithConst(EcoCut* pCut, const vector<pair<int, bool>>& constAssignment); // compute the truth table of the cut with constant inserted
 
     // set functions
     void setGateByAbcNode(Abc_Obj_t* pObj, EcoGate* pEcoGate) { _abcObj2EcoGate[Abc_ObjRegular(pObj)].insert(pEcoGate); }
@@ -95,6 +117,7 @@ class EcoNtk {
     EcoGate* getGateByName(const string& name);
     unordered_set<EcoGate*> getGateByAbcNode(Abc_Obj_t* pObj) { if(!_abcObj2EcoGate.count(Abc_ObjRegular(pObj))) return {}; return _abcObj2EcoGate.at(Abc_ObjRegular(pObj)); }
     EcoGate* getConst0Gate();
+    EcoGate* getConst1Gate();
     EcoGate* getPoByName(const string& name);
     EcoGate* getGate(unsigned id) { return GateVec.at(id); }
     EcoGate* getPi(unsigned id) { return _PIList.at(id); }
@@ -104,6 +127,7 @@ class EcoNtk {
     unsigned getNumPos() { return _POList.size(); }
     Abc_Ntk_t* getAbcNtk() { return _pAbcNtk; }
     vector<EcoCut*> getGateCuts(EcoGate* g) { if(!_gate2Cuts.count(g)) return {}; return _gate2Cuts.at(g); }
+    const vector<CirGate*> getAigDfsList() const { CirMgr* pCirMgr = cirV->getEcoCirV(); return pCirMgr->_dfsList; }
   private:
     unordered_set<string> gateTypeStrings = {"and", "or", "nand", "nor", "not", "buf", "xor", "xnor"};
     // map that records gate name 2 gates
@@ -113,8 +137,13 @@ class EcoNtk {
     // used for fraig
     unordered_map<Abc_Obj_t*, unordered_set<EcoGate*>> _abcObj2EcoGate;
 
-    // get the cuts from gate
+    // cut members
     unordered_map<EcoGate*, vector<EcoCut*>> _gate2Cuts;
+    unordered_set<string> _enumeratedSignatures;
+
+    // cut signature functions
+    bool computeAndInsertSigature(EcoCut* pCut);
+    bool checkSignatureExists();
 
     // PI list
     vector<EcoGate*> _PIList;

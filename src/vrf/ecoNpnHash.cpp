@@ -31,7 +31,7 @@ void printBits(size_t tt) {
 
 // write the hexidicimal truth table of a k-feasible cut function to a file
 void
-writeHexTT(int i, int k) {
+writeHexTT(size_t i, int k) {
 //   extern void printBits(size_t  num);
   ofstream f;
   f.open("./.hexTT.txt", ios::out);
@@ -48,12 +48,12 @@ writeHexTT(int i, int k) {
 }
 
 void combination(vector<vector<int>>& npnMatchWays,vector<int>& arr, int start, int end, int idx) {
-for(int i=start; i<end; ++i) {
-    arr[i] += 1;
-    combination(npnMatchWays, arr, i+1, end, idx+1);
-    arr[i] -= 1;
-}
-npnMatchWays.push_back(arr);
+  for(int i=start; i<end; ++i) {
+      arr[i] += 1;
+      combination(npnMatchWays, arr, i+1, end, idx+1);
+      arr[i] -= 1;
+  }
+  npnMatchWays.push_back(arr);
 }
 
 int factorial(int n) {
@@ -68,11 +68,11 @@ int factorial(int n) {
 
 // get the binary truth table of a k-feasible cut function to a file
 string
-getBinTT(int i, int k) {
+getBinTT(size_t i, int k) {
   string ret;
   k=pow(2, k) - 1;
   while(k>=0) {
-    ret.push_back(((i>>k)&1)+'0');
+    ret.push_back(((i>>k) & (size_t)1) + '0');
     k--;
   }
   return ret;
@@ -123,7 +123,7 @@ void
 EcoNPNHash::npnHash(const vector<vector<int>>& npnMatchWays, int i, int k) {
   ifstream f("./.hexTT_out.txt", ios::in);
   string npnClass, npnClassTT, funcTT;
-  int npnClassInt;
+  size_t npnClassInt;
   int offset = 0;
   for(int j=2; j<k; ++j)
     offset+=pow(2, pow(2, j));
@@ -248,6 +248,138 @@ EcoNPNHash::computeNpnHash() {
         }
         fNPNHash.close();
     }
+}
+
+// encode function (used to save memory)
+// <unused bits, output inv bit, input1 pos bits (3 bits), input1 inv bit, input2 pos bits (3 bits), input2 inv bit, ...>
+size_t
+EcoNPNHash::encodeMatch2SizeT(int outputMatch, vector<int>& inputMatch) {
+  size_t ret = 0;
+  
+  // add the output info
+  if(outputMatch)
+    ret += 1;
+
+  for(const auto& m : inputMatch) {
+    ret <<= 3;
+    ret += m / 2;
+
+    ret <<= 1;
+    if(m % 2 == 1)
+      ret += 1;
+  }
+
+  return ret;
+}
+
+pair<int, vector<int>>
+EcoNPNHash::decodeEncodedSizeTMatch(size_t encode, unsigned cutSize) {
+  vector<int> inputMatch(cutSize);
+  int outputMatch;
+
+  size_t posMask = 0b111;
+  size_t invMask = 0b1;
+
+  for(int i=cutSize-1; i>=0; i--) {
+    int m = 0;
+    if(encode & invMask == 1)
+      m = 1;
+    encode >>= 1;
+
+    int pos = (encode & posMask);
+    m += pos * 2;
+    encode >>= 3;
+
+    inputMatch[i] = m;
+  }
+
+  outputMatch = (encode & invMask);
+
+
+  return {outputMatch, inputMatch};
+}
+
+// return the full list of encoded valid matching
+// this function only support 4-feasible cut
+pair<string, vector<vector<int>>>
+EcoNPNHash::getNPNHashFull(size_t cutTT, unsigned simSize) {
+   assert(simSize <= 4); // the cut size should be less or equal to 4
+   vector<vector<int>> retMatch;
+   string NPNClass;
+
+   unsigned offset = 0;
+    for(unsigned i=_cutSizeFrom; i<simSize; ++i)
+      offset+=pow(2, pow(2, i));
+
+    unsigned idx = offset + cutTT;
+    assert(idx < _npnHashTable.size());
+
+    auto matches = _npnHashTable.at(idx);
+
+    NPNClass = matches.at(0).first;
+
+  for(const auto&[_, m] : matches)
+    retMatch.push_back(m);
+
+    return {NPNClass, retMatch};
+}
+
+
+pair<string, vector<int>>
+EcoNPNHash::getNPNHash(size_t cutTT, unsigned cutSize) {
+  if(cutSize <= 4) {
+    // compute the offset for the smaller cuts
+    unsigned offset = 0;
+    for(unsigned i=_cutSizeFrom; i<cutSize; ++i)
+      offset+=pow(2, pow(2, i));
+
+    unsigned idx = offset + cutTT;
+    assert(idx < _npnHashTable.size());
+    return _npnHashTable[idx][0];
+  }
+
+  else {
+    assert(cutSize <= 6); // currently support 6-feasible cut, but should can be greater than this
+    cout << "don don  " << cutSize << endl;
+    printBits(cutTT);
+    writeHexTT(cutTT, cutSize);
+    Abc_TruthNpnTest("./.hexTT.txt", 9, -1, 1, 0, 1 );
+
+    ifstream f("./.hexTT_out.txt", ios::in);
+    string npnClassAbc, npnClassTT, funcTT;
+
+    f >> npnClassAbc;
+    f.close();
+
+    cout << "npn class : " << npnClassAbc << endl;
+    size_t npnClassInt;
+    // funcTT = getBinTT(i,k);
+    stringstream ss;
+    ss << std::hex << npnClassAbc;
+    ss >> npnClassInt;
+    npnClassTT = getBinTT(npnClassInt, cutSize);
+
+    string myNpnClass = toHex(npnClassTT, cutSize); // append leading zero to avoid name conflix (though k = 2 and 3 still have same length in hex)
+    
+
+
+    return {myNpnClass, {}};
+  }
+
+}
+
+// given a cut, compute its NPN class and matching
+pair<string, vector<int>>
+EcoMgr::getNPNHash(gv::cir::EcoCut* cut) {
+  unsigned cutSize = cut->getCutSize(); // get the cut size
+  size_t cutTT;
+  // get the truth table of the cut
+  if(cut->getRoot()->isOld())
+    cutTT = _oldNtk->computeCutTT(cut);
+  else
+    cutTT = _newNtk->computeCutTT(cut);
+
+  return _pNpnHash->getNPNHash(cutTT, cutSize);
 }
 
 

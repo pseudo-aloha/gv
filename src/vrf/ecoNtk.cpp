@@ -95,6 +95,12 @@ EcoNtk::getConst0Gate() {
   return getGateByName("1'b0");
 }
 
+// get the const1 gate
+EcoGate*
+EcoNtk::getConst1Gate() {
+  return getGateByName("1'b1");
+}
+
 // get po by po name
 EcoGate*
 EcoNtk::getPoByName(const string& name) {
@@ -368,7 +374,7 @@ EcoNtk::abcReadFile() {
     }
     else { // handle the const gate case (const node name in abc is not the same as in my data structure )
       cirGate = cirV->getGate(0); // get the const 0 gate of cirV
-      ecoGate = getConst0Gate();
+      ecoGate = Abc_ObjIsComplement(pNode->pCopy) ? getConst0Gate() : getConst1Gate();
       ecoGate->ecoGateVComp = Abc_ObjIsComplement(pNode->pCopy) ? false : true; // since abc's const gate is const1 and ours is const0
     }
     ecoGate->ecoGateV = cirGate;
