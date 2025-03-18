@@ -44,14 +44,14 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
     map<string, vector<gv::cir::EcoCut*>, greater<string>> newNPNClass2Cuts;
 
     for(auto cut : oldPoCuts) {
-        // if(cut->getCutSize() > 4) continue;
+        // if(cut->getCutSize() > 5) continue;
         auto[npnClass, match] = getNPNHash(cut);
         npnClass = to_string(cut->getCutSize()) + "_" + npnClass;
         oldNPNClass2Cuts[npnClass].push_back(cut);
     }
 
     for(auto cut : newPoCuts) {
-        // if(cut->getCutSize() > 4) continue;
+        // if(cut->getCutSize() > 5) continue;
         auto[npnClass, match] = getNPNHash(cut);
         npnClass = to_string(cut->getCutSize()) + "_" + npnClass;
         newNPNClass2Cuts[npnClass].push_back(cut);
@@ -158,13 +158,14 @@ EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vec
         idx++;
     }
 
-    for(int i=0; i<constAssignSize; i++) {
-        constAssignmentOld[i] = {comb[i], false};
-        constAssignmentNew[i] = {i, false};
-    }
+    
 
     // try different permutaion
     for(int i=0; i<numPermutation; i++) {
+        for(int i=0; i<constAssignSize; i++) {
+            constAssignmentOld[i] = {comb[i], false};
+            constAssignmentNew[i] = {i, false};
+        }
         // try different pole
         for(size_t invAssignSizeT = 0; invAssignSizeT < pow(2, constAssignSize); invAssignSizeT++) {
             unordered_set<size_t> matches;
@@ -181,7 +182,10 @@ EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vec
                 auto[newNpnClass, newMatch] = _pNpnHash->getNPNHash(newCutTT, simSize);
                 
                 // if the NPN class does not match, the match is not valid
-                if(oldNpnClass != newNpnClass) break; 
+                if(oldNpnClass != newNpnClass) {
+                    matches.clear();
+                    break; 
+                } 
                 
                 unordered_set<size_t> caseMatches;
 
@@ -201,11 +205,11 @@ EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vec
                     
                     auto encode = _pNpnHash->encodeMatch2SizeT(outputMatch, inputMatch);
                     
-                    if(matches.empty() || matches.count(encode))
+                    if(constAssignSizeT == 0 || matches.count(encode))
                         caseMatches.insert(encode);
                 }
                 
-                if(matches.empty()) {
+                if(constAssignSizeT == 0) {
                     for(const auto& m : caseMatches)
                         matches.insert(m);
                 }
@@ -216,14 +220,40 @@ EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vec
                             nextMatches.insert(m);
                     }
                     matches = nextMatches;
+                    // if there is already no match exists, break
                     if(matches.empty())
                         break;
+                            
                 }
+                // check each submatch is valid, debug use
+                // unordered_map<gv::cir::EcoGate*, bool> constAssignmentOld;
+                // unordered_map<gv::cir::EcoGate*, bool> constAssignmentNew;
+                // for(const auto& match : matches) {
+                //     unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch;
+                //     auto[outputMatch, freeInputMatch] = _pNpnHash->decodeEncodedSizeTMatch(match, simSize);
+                //     for(unsigned j=0; j<freeInputMatch.size(); j++) {
+                //         const auto& m = freeInputMatch.at(j);
+                //         unsigned oldPos = j;
+                //         unsigned newPos = m / 2;
+                //         bool inv = (bool)(m % 2);
+                //         inputMatch[oldFreeLeaves.at(oldPos)] = {newFreeLeaves.at(newPos), inv};
+                //         cout << oldFreeLeaves.at(oldPos)->getGateFullName() << " " << newFreeLeaves.at(newPos)->getGateFullName() << " inv " << m % 2 << endl;
+                //     }
+                //     for(unsigned j=0; j<constAssignSize; j++) {
+                //         bool bit = getIthBit(constAssignSizeT, j);
+                //         bool oldInv = getIthBit(invAssignSizeT, j);
+                //         constAssignmentOld[oldLeaves.at(comb[j])] = (bit ^ oldInv);
+                //         constAssignmentNew[newLeaves.at(j)] = bit;
+                //         cout << oldLeaves.at(comb[j])->getGateFullName() << " " << newLeaves.at(j)->getGateFullName() << " " << oldInv << endl;
+                        
+                //     }
+                //     assert(checkMatchValidWithConst(oldCut, newCut, outputMatch, inputMatch, constAssignmentOld, constAssignmentNew));
+                // }
             }
             for(const auto& match : matches) {
                 auto[outputMatch, freeInputMatch] = _pNpnHash->decodeEncodedSizeTMatch(match, simSize);
                 unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch;
-
+                cout << "match " << match << endl;
                 cout << "output match : " << oldCut->getRoot()->getGateFullName() << " " << newCut->getRoot()->getGateFullName() << " inv " << outputMatch << endl;
                 // handle the free leaves
                 cout << "free input match : " << endl;
@@ -346,6 +376,109 @@ EcoMgr::checkMatchValid(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ou
     return (oldSimVal == newSimVal);
 }
 
+
+bool
+EcoMgr::checkMatchValidWithConst(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int outputInv, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch, unordered_map<gv::cir::EcoGate*, bool>& constAssignmentOld, unordered_map<gv::cir::EcoGate*, bool>& constAssignmentNew) {
+    assert(oldCut->getCutSize() == newCut->getCutSize());
+    const unsigned cutSize = oldCut->getCutSize(); // get the cut size
+    const unsigned simSize = cutSize - constAssignmentOld.size();
+    unordered_set<gv::cir::CirGate*> oldLeafCirGates, newLeafCirGates;
+    gv::cir::CirGate* oldRootAigGate = oldCut->getRoot()->getAigNode();
+    gv::cir::CirGate* newRootAigGate = newCut->getRoot()->getAigNode();
+
+    // set the input pattern (without constants)
+    size_t patterns[simSize];
+
+    // set the patterns (without constants)
+    for (int i = 0; i < simSize; i++)
+        patterns[i] = 0;
+    
+    for (int i = 0; i < pow(2, simSize); i++) {
+        unsigned pattern = i;
+        for (int j = 0; j < simSize; j++) {
+            patterns[j] += ((pattern & 1) << i);
+            pattern >>= 1;
+        }
+    }
+
+    // set the patterns to gate leaves
+    unsigned patternIdx = 0;
+    for(const auto&[oldGate, newGateInfo] : inputMatch) {
+        auto[newGate, inputInv] = newGateInfo;
+        gv::cir::CirGate* pAigOld = oldGate->getAigNode();
+        gv::cir::CirGate* pAigNew = newGate->getAigNode();
+
+        size_t pattern = patterns[patternIdx++];
+        size_t invPattern = (~pattern);
+        
+        if(inputInv ^ oldGate->getAigNodeInv())
+            pAigOld->setPValue(invPattern);
+        else
+            pAigOld->setPValue(pattern);
+        if(newGate->getAigNodeInv())
+            pAigNew->setPValue(invPattern);
+        else
+            pAigNew->setPValue(pattern);
+        
+        oldLeafCirGates.insert(pAigOld);
+        newLeafCirGates.insert(pAigNew);
+    }
+
+    // set the constant bits
+    const size_t all0 = 0;
+    const size_t all1 = 0xffffffffffffffff;
+    for(const auto&[g, val] : constAssignmentOld) {
+        gv::cir::CirGate* pAig = g->getAigNode();
+        if(g->getAigNodeInv() ^ val)
+            pAig->setPValue(all1);
+        else
+            pAig->setPValue(all0);
+        oldLeafCirGates.insert(pAig);
+    }
+    for(const auto&[g, val] : constAssignmentNew) {
+        gv::cir::CirGate* pAig = g->getAigNode();
+        if(g->getAigNodeInv() ^ val)
+            pAig->setPValue(all1);
+        else
+            pAig->setPValue(all0);
+        newLeafCirGates.insert(pAig);
+    }
+
+    // sim using the dfs list
+    for(const auto& g : _oldNtk->getAigDfsList()) {
+        if(oldLeafCirGates.count(g)) continue; // if the gate is a leaf node, don't change its value
+        g->pSim();
+        if(g == oldRootAigGate) break; // if the root aig node is reached, break
+    }
+    for(const auto& g : _newNtk->getAigDfsList()) {
+        if(newLeafCirGates.count(g)) continue; // if the gate is a leaf node, don't change its value
+        g->pSim();
+        if(g == newRootAigGate) break; // if the root aig node is reached, break
+    }
+
+    // get the sim value at output side
+    size_t oldSimVal, newSimVal;
+    oldSimVal = oldRootAigGate->getPValue()();
+    newSimVal = newRootAigGate->getPValue()();
+
+    // see if the output mapping is inv
+    oldSimVal = oldCut->getRoot()->getAigNodeInv() ? (~oldSimVal) : oldSimVal;
+    newSimVal = newCut->getRoot()->getAigNodeInv() ? (~newSimVal) : newSimVal;
+
+    if(outputInv)
+        oldSimVal = (~oldSimVal);
+
+    // mask to filter out the unused bits (without countsing const bits)
+    size_t mask = 0;
+    for (size_t i = 0; i < pow(2, simSize); ++i)
+        mask += ((size_t)1 << i);
+
+    oldSimVal &= mask;
+    newSimVal &= mask;
+
+    return (oldSimVal == newSimVal);
+}
+
 // get one valid matching method
 pair<int, vector<int>>
 EcoMgr::getOneMatchWay(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut) {
@@ -367,14 +500,12 @@ EcoMgr::getOneMatchWay(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut) {
         assert(oldNpnClass == newNpnClass);
 
         outputMatch = (newMatch[0] & 0b1) ^ (oldMatch[0] & 0b1);
-        cout << "oo : " << outputMatch << endl;
 
         for(int j=1; j<n; ++j)
             newPosVec[newMatch[j] / 2] = j;
 
         for(int i=1; i<oldMatch.size(); ++i) {
             inputMatch[i - 1] = ((newPosVec[oldMatch[i] / 2] - 1) * 2 + ((newMatch[newPosVec[oldMatch[i] / 2]] & 0b1) ^ (oldMatch.at(i) & 0b1)));
-            cout << "ii " << i-1 << " " << inputMatch[i - 1] << endl;
         }
 
         // check that the matching is valid
@@ -387,7 +518,7 @@ EcoMgr::getOneMatchWay(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut) {
             newLeaves.push_back(leaf);
         for(int i=0; i<inputMatch.size(); i++) {
             inputGateMatch[oldLeaves.at(i)] = {newLeaves.at(inputMatch.at(i) / 2), (bool)(inputMatch.at(i) % 2)};
-            cout << "in matxh " << oldLeaves.at(i)->getGateFullName() << " " << newLeaves.at(inputMatch.at(i) / 2)->getGateFullName() << " inv " << (bool)(inputMatch.at(i) % 2) << endl;
+            cout << "in match " << oldLeaves.at(i)->getGateFullName() << " " << newLeaves.at(inputMatch.at(i) / 2)->getGateFullName() << " inv " << (bool)(inputMatch.at(i) % 2) << endl;
         }
         assert(checkMatchValid(oldCut, newCut, outputMatch, inputGateMatch));
     }

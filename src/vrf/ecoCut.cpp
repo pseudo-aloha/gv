@@ -245,13 +245,14 @@ EcoNtk::computeCutTT(EcoCut* pCut) {
     // cout << setw(5) << pCut->getRoot()->getGateName() << " ";
     // printBits(simVal, root->getAigNodeInv());
 
+    if(root->getAigNodeInv())
+        simVal = (~simVal);
+
     // mask to filter out the unused bits
     size_t mask = 0;
     for (size_t i = 0; i < pow(2, cutSize); ++i)
         mask += ((size_t)1 << i);
-    
-    if(root->getAigNodeInv())
-        simVal = (~simVal);
+
 
     simVal &= mask;
 
@@ -292,16 +293,22 @@ EcoNtk::computeCutTTWithConst(EcoCut* pCut, const vector<pair<int, bool>>& const
     const size_t all0 = 0;
     const size_t all1 = 0xffffffffffffffff;
 
+    int i=0;
     for(const auto& g : leaves) {
         CirGate* gAig = g->getAigNode();
         if(constAssignmentMap.count(leafIdx)) {
-            if(constAssignmentMap.at(leafIdx) == false)
+            if((constAssignmentMap.at(leafIdx) ^ g->getAigNodeInv()) == false)
                 gAig->setPValue(all0);
             else
                 gAig->setPValue(all1);
         }
-        else
-            gAig->setPValue(patterns[patIdx++]);
+        else {
+            size_t pattern = patterns[i++];
+            if(g->getAigNodeInv())
+                gAig->setPValue(~pattern);
+            else
+                gAig->setPValue(pattern);
+        }
 
         leafCirGates.insert(gAig);
         leafIdx++;
@@ -316,6 +323,9 @@ EcoNtk::computeCutTTWithConst(EcoCut* pCut, const vector<pair<int, bool>>& const
     }
     
     size_t simVal = rootAigGate->getPValue()();
+
+    if(root->getAigNodeInv())
+        simVal = (~simVal);
 
     // mask to filter out the unused bits
     size_t mask = 0;
