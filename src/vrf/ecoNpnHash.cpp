@@ -382,6 +382,19 @@ EcoMgr::getNPNHash(gv::cir::EcoCut* cut) {
   return _pNpnHash->getNPNHash(cutTT, cutSize);
 }
 
+// given a cut, compute its NPN class and matching
+pair<string, vector<vector<int>>>
+EcoMgr::getNPNHashFull(gv::cir::EcoCut* cut) {
+  unsigned cutSize = cut->getCutSize(); // get the cut size
+  size_t cutTT;
+  // get the truth table of the cut
+  if(cut->getRoot()->isOld())
+    cutTT = _oldNtk->computeCutTT(cut);
+  else
+    cutTT = _newNtk->computeCutTT(cut);
+
+  return _pNpnHash->getNPNHashFull(cutTT, cutSize);
+}
 
 } // end of namespace gv::eco
 } // end of namespce gv

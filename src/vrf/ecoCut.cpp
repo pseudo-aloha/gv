@@ -214,7 +214,7 @@ EcoNtk::computeCutTT(EcoCut* pCut) {
         patterns[i] = 0;
     }
     for (int i = 0; i < pow(2, cutSize); i++) {
-        unsigned pattern = i;
+        size_t pattern = i;
         for (int j = 0; j < cutSize; j++) {
             patterns[j] += ((pattern & 1) << i);
             pattern >>= 1;
@@ -238,12 +238,10 @@ EcoNtk::computeCutTT(EcoCut* pCut) {
     for(const auto& g : pCirMgr->_dfsList) {
         if(leafCirGates.count(g)) continue; // if the gate is a leaf node, don't change its value
         g->pSim();
-        if(g == rootAigGate) break; // if the root aig node is reached, break
+        // if(g == rootAigGate) break; // if the root aig node is reached, break
     }
     
     size_t simVal = rootAigGate->getPValue()();
-    // cout << setw(5) << pCut->getRoot()->getGateName() << " ";
-    // printBits(simVal, root->getAigNodeInv());
 
     if(root->getAigNodeInv())
         simVal = (~simVal);
@@ -280,7 +278,7 @@ EcoNtk::computeCutTTWithConst(EcoCut* pCut, const vector<pair<int, bool>>& const
         patterns[i] = 0;
     
     for (int i = 0; i < pow(2, simSize); i++) {
-        unsigned pattern = i;
+        size_t pattern = i;
         for (int j = 0; j < simSize; j++) {
             patterns[j] += ((pattern & 1) << i);
             pattern >>= 1;

@@ -189,6 +189,28 @@ EcoMgr::doFraig() {
   //   dfs(_newNtk->getPo(i));
 }
 
+// get the aig of merged aig and pole
+pair<gv::cir::CirGate*, bool>
+EcoMgr::getMergedAig(gv::cir::EcoGate* g) {
+  assert(isMerged(g)); // make sure that g is a merged gate
+  gv::cir::CirGate* mergedAig;
+  bool pole;
+  auto mergedGates = getMergedGates(g);
+  if(!mergedGates.empty()) {
+    gv::cir::EcoGate* mergedGate = *(mergedGates.begin());
+    mergedAig = mergedGate->getAigNode();
+    pole = mergedGate->getAigNodeInv();
+  }
+  else {
+    auto invMergedGates = getInvMergedGates(g);
+    assert(!invMergedGates.empty());
+    gv::cir::EcoGate* invMergedGate = *(invMergedGates.begin());
+    mergedAig = invMergedGate->getAigNode();
+    pole = (invMergedGate->getAigNodeInv() ^ true);
+  }
+  return {mergedAig, pole};
+}
+
 void
 EcoMgr::doMatching(unsigned kFeassible) {
   
@@ -201,14 +223,20 @@ EcoMgr::doMatching(unsigned kFeassible) {
   _oldNtk->enumerateCuts(kFeassible, this);
   _newNtk->enumerateCuts(kFeassible, this);
 
+  // compute the score of each cut
+  sortCandCutsByScore();
+
   // output side matching
-  doOutputSideMatching();
+  // doOutputSideMatching();
 
 
   // report RP pairs
   for(auto[oldGate, newGate] : _RPPair) {
     cout << oldGate->getGateFullName() << " -> " << newGate->getGateFullName() << endl;
   }
+
+  // generate patch
+  genPatch();
 }
 
 

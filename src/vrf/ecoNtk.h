@@ -30,6 +30,69 @@ namespace gv {
 namespace gv {
 namespace cir {
 
+  class EcoGate {
+    public:
+      friend class EcoNtk;
+      EcoGate(string gateType, string gateName);
+      ~EcoGate();
+      string getGateName() { return _gateName; }
+      string getGateFullName() { return _gateName + (_isOld ? "_O" : "_N"); }
+      string getGateTypeName();
+      unsigned getGateType() { return _gateType; }
+      unsigned getNumFanins() { return _fanins.size(); }
+      EcoGate* getFanin(unsigned i) { if(i>=_fanins.size()) return nullptr; return _fanins.at(i); }
+      void reportGate();
+      bool isOld() { return _isOld; }
+      void setOld(bool isOld) { _isOld = isOld; }
+      bool getAigNodeInv() { return ecoGateVComp; }
+      CirGate* getAigNode() { return ecoGateV; }
+  
+      // add function
+      void addFanin(EcoGate* g) { _fanins.push_back(g); }
+  
+      // traversal things
+      static void setGlobalTrav() { _globalTravFlag++; }
+      void setGlobalTrav(unsigned i) { _globalTravFlag += i; }
+    void setToGlobalTrav() { _travFlag = _globalTravFlag; }
+    bool isGlobalTrav() { return (_travFlag == _globalTravFlag);}
+
+    enum EcoGateType {
+      ECO_CONST_0_GATE = 0,
+      ECO_CONST_1_GATE = 1,
+      ECO_AND_GATE = 2,
+      ECO_OR_GATE = 3,
+      ECO_NAND_GATE = 4,
+      ECO_NOR_GATE = 5,
+      ECO_XOR_GATE = 6,
+      ECO_XNOR_GATE = 7,
+      ECO_BUF_GATE = 8,
+      ECO_NOT_GATE = 9,
+      ECO_PI_GATE = 10,
+      ECO_PO_GATE = 11
+    };
+  private:
+    // Gate attributes
+    unsigned _gateType; // store the gate type e.g. and / or / not
+    string _gateName; // store the gate name (the output net name)
+
+    // Gate fanins
+    vector<EcoGate*> _fanins;
+    vector<string> _faninNames;
+
+    // internal gate
+    CirGate* ecoGateV; // internal AIG node that maps to the EcoGate
+    bool ecoGateVComp; // record if the gate's polation when mapping to the internal AIG node
+    Abc_Obj_t* _pAbcNode;
+
+    // traverse flag
+    static unsigned _globalTravFlag; // global trav flag, shared by all the gates. Used to check if the gate is traversed (increment it before traversing)
+    unsigned _travFlag;
+    
+    
+    bool _isOld; // record gate belongs to old/new circuiit
+};
+
+
 // Cuts in the EcoNtk
 class EcoCut {
 public:
@@ -39,9 +102,13 @@ public:
   EcoCut(EcoGate* root, unordered_set<EcoGate*> leaves) : _signature("") { _root = root; _leaves = leaves; }
   EcoCut(EcoGate* root, unordered_map<EcoGate*, int> leaves) : _signature("") { _root = root; for(auto&[leaf, cnt] : leaves) _leaves.insert(leaf); }
   ~EcoCut() { _root = nullptr; _leaves.clear(); _signature.clear(); }
+  
+  // Basic setting functions
   void setRoot(EcoGate* g) { _root = g; }
   void addLeaf(EcoGate* g) { _leaves.insert(g); }
   void setSig(const string& sig) { _signature = sig; }
+  void setMgAigSig(const vector<pair<string, bool>>& sig) { _mgAigSig = sig; }
+  void setNPNClass(const string& npnClass) { _npnClass = npnClass; }
 
   // get functions
   EcoGate* const getRoot() { return _root; }
@@ -49,7 +116,9 @@ public:
   unsigned getCutSize() const { return _leaves.size(); }
   static unsigned getMaxCutsPerNode() { return _maxCutsPerNode; }
   string getSig() { return _signature; }
+  const vector<pair<string, bool>> getMgAigSig() { return _mgAigSig; }
   unsigned getNumMergedLeaves() {return _numMergedLeaves;}
+  const string getNPNClass() const { return _npnClass; }
 
   void setNumMergedLeaves(unsigned i) { _numMergedLeaves = i; };
 
@@ -57,11 +126,18 @@ public:
   void reportCut();
 
 private:
+  // basib members for a cut
   EcoGate* _root;
   unordered_set<EcoGate*> _leaves;
+
+  // used to limit the max # of cuts per node
   static unsigned _maxCutsPerNode;
-  string _signature;
-  unsigned _numMergedLeaves;
+
+  // signature things
+  string _signature; // used to uniquefy cuts
+  vector<pair<string, bool>> _mgAigSig; // signature that is formed by the ids of merged AIG on the cut  
+  string _npnClass; // the npn class of the cut
+  unsigned _numMergedLeaves; // used for sorting the score of a cut
 };
 
 // Wrap CirMgr, modified to store some extra information for ECO usage
@@ -112,6 +188,11 @@ class EcoNtk {
     // set functions
     void setGateByAbcNode(Abc_Obj_t* pObj, EcoGate* pEcoGate) { _abcObj2EcoGate[Abc_ObjRegular(pObj)].insert(pEcoGate); }
 
+    // add function
+    void addPo(EcoGate* g) { _POList.push_back(g); }
+    void addPi(EcoGate* g) { _PIList.push_back(g); }
+    void addGate(EcoGate* g) { if(!_gateName2Gate.count(g->getGateName())) _gateName2Gate[g->getGateName()] = g; GateVec.push_back(g); }
+    
 
     // get functions
     EcoGate* getGateByName(const string& name);
@@ -157,65 +238,9 @@ class EcoNtk {
 };
 
 
-class EcoGate {
-  public:
-    friend class EcoNtk;
-    EcoGate(string gateType, string gateName);
-    ~EcoGate();
-    string getGateName() { return _gateName; }
-    string getGateFullName() { return _gateName + (_isOld ? "_O" : "_N"); }
-    string getGateTypeName();
-    unsigned getGateType() { return _gateType; }
-    unsigned getNumFanins() { return _fanins.size(); }
-    EcoGate* getFanin(unsigned i) { if(i>=_fanins.size()) return nullptr; return _fanins.at(i); }
-    void reportGate();
-    bool isOld() { return _isOld; }
-    void setOld(bool isOld) { _isOld = isOld; }
-    bool getAigNodeInv() { return ecoGateVComp; }
-    CirGate* getAigNode() { return ecoGateV; }
 
-    // traversal things
-    static void setGlobalTrav() { _globalTravFlag++; }
-    void setGlobalTrav(unsigned i) { _globalTravFlag += i; }
-    void setToGlobalTrav() { _travFlag = _globalTravFlag; }
-    bool isGlobalTrav() { return (_travFlag == _globalTravFlag);}
 
-    enum EcoGateType {
-      ECO_CONST_0_GATE = 0,
-      ECO_CONST_1_GATE = 1,
-      ECO_AND_GATE = 2,
-      ECO_OR_GATE = 3,
-      ECO_NAND_GATE = 4,
-      ECO_NOR_GATE = 5,
-      ECO_XOR_GATE = 6,
-      ECO_XNOR_GATE = 7,
-      ECO_BUF_GATE = 8,
-      ECO_NOT_GATE = 9,
-      ECO_PI_GATE = 10,
-      ECO_PO_GATE = 11
-    };
-  private:
-    // Gate attributes
-    unsigned _gateType; // store the gate type e.g. and / or / not
-    string _gateName; // store the gate name (the output net name)
-
-    // Gate fanins
-    vector<EcoGate*> _fanins;
-    vector<string> _faninNames;
-
-    // internal gate
-    CirGate* ecoGateV; // internal AIG node that maps to the EcoGate
-    bool ecoGateVComp; // record if the gate's polation when mapping to the internal AIG node
-    Abc_Obj_t* _pAbcNode;
-
-    // traverse flag
-    static unsigned _globalTravFlag; // global trav flag, shared by all the gates. Used to check if the gate is traversed (increment it before traversing)
-    unsigned _travFlag;
     
-    
-    bool _isOld; // record gate belongs to old/new circuiit
-};
-
 
 
 // end of name space gv::cir

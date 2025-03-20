@@ -51,8 +51,9 @@ class EcoMgr {
 public:
   // constructor
   EcoMgr () { _oldNtk = new gv::cir::EcoNtk;
-              _newNtk = new gv::cir::EcoNtk; }
-  ~EcoMgr () { delete _oldNtk; delete _newNtk; }
+              _newNtk = new gv::cir::EcoNtk;
+              _patchNtk = new gv::cir::EcoNtk; }
+  ~EcoMgr () { delete _oldNtk; delete _newNtk; delete _patchNtk; }
   
   // main step function
   void doEco(const string& oldDesignName, const string& newDesignName);
@@ -64,11 +65,16 @@ public:
   // general matching function
   void matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate); // match the cuts at the gate pair
   bool match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut);
-  pair<int, vector<int>> getOneMatchWay(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut);
+  vector<size_t>  getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut);
   vector<size_t> simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vector<int>& comb);
   bool checkMatchValid(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int outputInv, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch); // function to check that if the matching is indeed valid
   bool checkMatchValidWithConst(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int outputInv, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch, unordered_map<gv::cir::EcoGate*, bool>& constAssignmentOld, unordered_map<gv::cir::EcoGate*, bool>& constAssignmentNew);
   
+  // score computation functions
+  void sortCandCutsByScore(); // collect the enumerated cuts and compute their scores
+
+  // signature computation functions
+
   // output side matching functions
   void doOutputSideMatching();
   void matchOnePo(unsigned ithPo);
@@ -83,27 +89,39 @@ public:
   unordered_set<gv::cir::EcoGate*> getMergedGates(gv::cir::EcoGate* g) { if(!_mergeTable.count(g)) return {}; return _mergeTable.at(g); }
   unordered_set<gv::cir::EcoGate*> getInvMergedGates(gv::cir::EcoGate* g) { if(!_invMergeTable.count(g)) return {}; return _invMergeTable.at(g); }
   bool isMerged(gv::cir::EcoGate* g) { return (_mergeTable.count(g) || _invMergeTable.count(g)); }
+  // get the aig of merged aig and pole
+  pair<gv::cir::CirGate*, bool> getMergedAig(gv::cir::EcoGate* g);
 
   // cut hashing things
   // compute cut hash table
   void computeCutHashTable();
+
   // get NPN class
   pair<string, vector<int>> getNPNHash(gv::cir::EcoCut* cut);
+  pair<string, vector<vector<int>>> getNPNHashFull(gv::cir::EcoCut* cut);
 
   // Record RP  Pair
   void addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) { _RPPair[oldGate] = newGate; }
   gv::cir::EcoGate* getRPGate(gv::cir::EcoGate* oldGate) { if(!_RPPair.count(oldGate)) return nullptr; return _RPPair.at(oldGate);}
 
   // generate patch
+  void genPatch();
+  void collectPatchGates(gv::cir::EcoGate* g, bool isEntry);
+  bool applyNCheckPatch();
   
 
 private:
   gv::cir::EcoNtk* _oldNtk;
   gv::cir::EcoNtk* _newNtk;
+  gv::cir::EcoNtk* _patchNtk;
 
   // record the merge information
   unordered_map<gv::cir::EcoGate*, unordered_set<gv::cir::EcoGate*>> _mergeTable;
   unordered_map<gv::cir::EcoGate*, unordered_set<gv::cir::EcoGate*>> _invMergeTable;
+
+  // record all the cand cuts for matching
+  vector<gv::cir::EcoCut*> _oldCandCuts;
+  vector<gv::cir::EcoCut*> _newCandCuts;
 
   // record the NPN hash information
   EcoNPNHash* _pNpnHash;

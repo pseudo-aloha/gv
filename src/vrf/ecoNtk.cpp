@@ -16,31 +16,31 @@ string
 EcoGate::getGateTypeName() {
   switch (_gateType) {
     case ECO_CONST_0_GATE:
-      return "CONST0";
+      return "const0";
     case ECO_CONST_1_GATE:
-      return "CONST1";
+      return "const1";
     case ECO_AND_GATE:
-      return "AND";
+      return "and";
     case ECO_OR_GATE:
-      return "OR";
+      return "or";
     case ECO_NAND_GATE:
-      return "NAND";
+      return "nand";
     case ECO_NOR_GATE:
-      return "NOR";
+      return "nor";
     case ECO_XOR_GATE:
-      return "XOR";
+      return "xor";
     case ECO_XNOR_GATE:
-      return "XNOR";
+      return "xnor";
     case ECO_BUF_GATE:
-      return "BUF";
+      return "buf";
     case ECO_NOT_GATE:
-      return "NOT";
+      return "not";
     case ECO_PI_GATE:
-      return "PI";
+      return "pi";
     case ECO_PO_GATE:
-      return "PO";
+      return "po";
     default:
-      return "NONE";
+      return "none";
   }
 }
 
