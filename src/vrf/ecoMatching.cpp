@@ -15,8 +15,8 @@ EcoMgr::doOutputSideMatching() {
     unsigned nPo = _oldNtk->getNumPos();
     
     for(unsigned i=0; i<nPo; ++i) {
-        // if(i > 0) break;
         matchOnePo(i);
+        break;
     }
 }
 
@@ -26,8 +26,11 @@ EcoMgr::matchOnePo(unsigned ithPo) {
     gv::cir::EcoGate* oldPo = _oldNtk->getPo(ithPo);
     gv::cir::EcoGate* newPo = _newNtk->getPo(ithPo);
 
-    matchCutsAtGatePair(oldPo->getFanin(0), newPo->getFanin(0));
+    // fault analysis; for the PO
+    
 
+    // match cuts
+    matchCutsAtGatePair(oldPo->getFanin(0), newPo->getFanin(0));
 }
 
 // match the cuts at the gate pair
@@ -44,14 +47,12 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
     map<string, vector<gv::cir::EcoCut*>, greater<string>> newNPNClass2Cuts;
 
     for(auto cut : oldPoCuts) {
-        // if(cut->getCutSize() > 5) continue;
         auto[npnClass, match] = getNPNHash(cut);
         npnClass = to_string(cut->getCutSize()) + "_" + npnClass;
         oldNPNClass2Cuts[npnClass].push_back(cut);
     }
 
     for(auto cut : newPoCuts) {
-        // if(cut->getCutSize() > 5) continue;
         auto[npnClass, match] = getNPNHash(cut);
         npnClass = to_string(cut->getCutSize()) + "_" + npnClass;
         newNPNClass2Cuts[npnClass].push_back(cut);
@@ -96,7 +97,7 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
         
         for(auto& oldCut : oldCuts) {
             for(auto& newCut : newCuts) {
-                if(oldCut->getCutSize() < 2) continue;
+                // if(oldCut->getCutSize() < 2) continue;
                 foundMatch = match2Cuts(oldCut, newCut);
                 if(foundMatch) break;
             }
@@ -373,14 +374,16 @@ EcoMgr::checkMatchValid(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ou
     oldSimVal &= mask;
     newSimVal &= mask;
 
-    cout << "output inv " << outputInv << endl;
-    printBits(oldSimVal);
-    printBits(newSimVal);
-
+    
     if(oldSimVal != newSimVal) {
         cout << "not matched, please debug for this match" << endl;
+        cout << "output inv " << outputInv << endl;
+        printBits(oldSimVal);
+        printBits(newSimVal);
+
         oldCut->reportCut();
         newCut->reportCut();
+        assert(0);
     }
 
     return (oldSimVal == newSimVal);
@@ -639,6 +642,7 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut) {
     for(int i=0; i<inputMatch.size(); ++i) {
         auto oldGate = oldLeaves.at(i);
         auto newGate = newLeaves.at(inputMatch[i] / 2);
+        cout << "cos sim : " << getCosieSimilarity(oldGate, newGate, 0) << endl;
         if(getRPGate(oldGate) && getRPGate(oldGate) != newGate) {
             cout << "assert(0); " << oldGate->getGateFullName() << " " << getRPGate(oldGate)->getGateFullName() << " new " << newGate->getGateFullName() << endl;
             return false;
@@ -792,7 +796,7 @@ EcoMgr::sortCandCutsByScore() {
             cout << "new npn " << newCut->getNPNClass() << " old npn " << chosenOldCand->getNPNClass() << endl;
             // find the match ways
             match2Cuts(chosenOldCand, newCut);
-            // break;
+            break;
         }
         
         

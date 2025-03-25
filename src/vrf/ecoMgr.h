@@ -100,6 +100,12 @@ public:
   pair<string, vector<int>> getNPNHash(gv::cir::EcoCut* cut);
   pair<string, vector<vector<int>>> getNPNHashFull(gv::cir::EcoCut* cut);
 
+  // simulation methods
+  void doRandomSim(unsigned nPatterns);
+
+  // get Gate similarity functions
+  double getCosieSimilarity(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, unsigned poId);
+
   // Record RP  Pair
   void addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) { _RPPair[oldGate] = newGate; }
   gv::cir::EcoGate* getRPGate(gv::cir::EcoGate* oldGate) { if(!_RPPair.count(oldGate)) return nullptr; return _RPPair.at(oldGate);}
@@ -118,6 +124,9 @@ private:
   // record the merge information
   unordered_map<gv::cir::EcoGate*, unordered_set<gv::cir::EcoGate*>> _mergeTable;
   unordered_map<gv::cir::EcoGate*, unordered_set<gv::cir::EcoGate*>> _invMergeTable;
+
+  // record the match information
+  unordered_map<gv::cir::EcoGate*, vector<pair<gv::cir::EcoGate*, bool>>> _matchTable;
 
   // record all the cand cuts for matching
   vector<gv::cir::EcoCut*> _oldCandCuts;

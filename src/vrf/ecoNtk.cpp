@@ -11,6 +11,7 @@ unsigned gv::cir::EcoGate::_globalTravFlag = 0;
 
 namespace gv {
 namespace cir {
+  extern void printBits(size_t tt);
 // print the gate type name
 string
 EcoGate::getGateTypeName() {
@@ -71,6 +72,10 @@ EcoGate::EcoGate(string gateType, string gateName) : ecoGateVComp(false), ecoGat
     _gateType = ECO_PI_GATE;
   else if(gateType == "po")
     _gateType = ECO_PO_GATE;
+}
+
+EcoGate::~EcoGate() {
+  _simVals.clear();
 }
 
 void
@@ -468,10 +473,10 @@ EcoNtk::parsePI(const string& dir) {
   file.close();
   EcoGate* const0 = new EcoGate("const0", "1'b0");
   _gateName2Gate["1'b0"] = const0;
-  _PIList.push_back(const0);
+  // _PIList.push_back(const0);
   EcoGate* const1 = new EcoGate("const1", "1'b1");
   _gateName2Gate["1'b1"] = const1;
-  _PIList.push_back(const1);
+  // _PIList.push_back(const1);
   sort(_PIList.begin(), _PIList.end(), [](EcoGate* g1, EcoGate* g2) {
     return (g1->getGateName() < g2->getGateName());
   });
@@ -491,6 +496,30 @@ EcoNtk::readNtkFile(const string& dir) {
   // for(auto& gate : _POList) {
   //   gate->reportGate();
   // }
+}
+
+void
+EcoNtk::simOnPats(size_t** pats, unsigned nPats) {
+  for(unsigned i=0; i<nPats; ++i) {
+    for(unsigned j=0; j<getNumPis(); ++j) {
+      auto pi = getPi(j);
+      auto aig = pi->getAigNode();
+      assert(!pi->getAigNodeInv());
+      aig->setPValue(pats[i][j]);
+      // printBits(pats[i][j]);
+    }
+    // sim using the dfs list
+    CirMgr* pCirMgr = cirV->getEcoCirV();
+    for(const auto& g : pCirMgr->_dfsList)
+      g->pSim();
+    // add the sim value to the gate
+    for(auto& g : GateVec) {
+      size_t val = g->getAigNode()->getPValue()();
+      if(g->getAigNodeInv())
+        val = ~val;
+      g->_simVals.push_back(val);
+    }
+  }
 }
 
 }

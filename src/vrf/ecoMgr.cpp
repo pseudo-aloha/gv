@@ -16,6 +16,9 @@ EcoMgr::doEco(const string& oldDesignName, const string& newDesignName) {
   // do fraig
   doFraig();
 
+  // dp random sim
+  doRandomSim(10);
+
   // do matching
   doMatching(6); // enumerate 6-feasible cuts
 
@@ -223,20 +226,22 @@ EcoMgr::doMatching(unsigned kFeassible) {
   _oldNtk->enumerateCuts(kFeassible, this);
   _newNtk->enumerateCuts(kFeassible, this);
 
-  // compute the score of each cut
-  sortCandCutsByScore();
+  // output side matching (along with fault analysis)
+  doOutputSideMatching();
 
-  // output side matching
-  // doOutputSideMatching();
+  // compute the score of each cut and match the remaining cuts
+  // sortCandCutsByScore();
+
+  
 
 
   // report RP pairs
-  for(auto[oldGate, newGate] : _RPPair) {
-    cout << oldGate->getGateFullName() << " -> " << newGate->getGateFullName() << endl;
-  }
+  // for(auto[oldGate, newGate] : _RPPair) {
+  //   cout << oldGate->getGateFullName() << " -> " << newGate->getGateFullName() << endl;
+  // }
 
   // generate patch
-  genPatch();
+  // genPatch();
 }
 
 

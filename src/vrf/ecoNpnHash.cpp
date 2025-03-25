@@ -307,9 +307,16 @@ EcoNPNHash::getNPNHashFull(size_t cutTT, unsigned simSize) {
    vector<vector<int>> retMatch;
    string NPNClass;
 
+   if(simSize <= 1) {
+    if(cutTT)
+      return {"0", {{0,2}, {1,3}}};
+    else
+      return {"0", {{0,3}, {1,2}}};
+  }
+
    unsigned offset = 0;
-    for(unsigned i=_cutSizeFrom; i<simSize; ++i)
-      offset+=pow(2, pow(2, i));
+  for(unsigned i=_cutSizeFrom; i<simSize; ++i)
+    offset+=pow(2, pow(2, i));
 
     unsigned idx = offset + cutTT;
     assert(idx < _npnHashTable.size());
@@ -327,7 +334,13 @@ EcoNPNHash::getNPNHashFull(size_t cutTT, unsigned simSize) {
 
 pair<string, vector<int>>
 EcoNPNHash::getNPNHash(size_t cutTT, unsigned cutSize) {
-  if(cutSize <= 4) {
+  if(cutSize <= 1) {
+    if(cutTT)
+      return {"0", {0, 2}};
+    else
+      return {"0", {0, 3}};
+  }
+  else if(cutSize <= 4) {
     // compute the offset for the smaller cuts
     unsigned offset = 0;
     for(unsigned i=_cutSizeFrom; i<cutSize; ++i)
@@ -340,10 +353,10 @@ EcoNPNHash::getNPNHash(size_t cutTT, unsigned cutSize) {
 
   else {
     assert(cutSize <= 6); // currently support 6-feasible cut, but should can be greater than this
-    cout << "don don  " << cutSize << endl;
-    printBits(cutTT);
+    // cout << "don don  " << cutSize << endl;
+    // printBits(cutTT);
     writeHexTT(cutTT, cutSize);
-    Abc_TruthNpnTest("./.hexTT.txt", 9, -1, 1, 0, 1 );
+    Abc_TruthNpnTest("./.hexTT.txt", 9, -1, 1, 0, 0 );
 
     ifstream f("./.hexTT_out.txt", ios::in);
     string npnClassAbc, npnClassTT, funcTT;
@@ -351,7 +364,7 @@ EcoNPNHash::getNPNHash(size_t cutTT, unsigned cutSize) {
     f >> npnClassAbc;
     f.close();
 
-    cout << "npn class : " << npnClassAbc << endl;
+    // cout << "npn class : " << npnClassAbc << endl;
     size_t npnClassInt;
     // funcTT = getBinTT(i,k);
     stringstream ss;

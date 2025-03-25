@@ -53,8 +53,11 @@ namespace cir {
       // traversal things
       static void setGlobalTrav() { _globalTravFlag++; }
       void setGlobalTrav(unsigned i) { _globalTravFlag += i; }
-    void setToGlobalTrav() { _travFlag = _globalTravFlag; }
-    bool isGlobalTrav() { return (_travFlag == _globalTravFlag);}
+      void setToGlobalTrav() { _travFlag = _globalTravFlag; }
+      bool isGlobalTrav() { return (_travFlag == _globalTravFlag);}
+
+      // sim val
+      const vector<size_t>& getSimVal() { return _simVals; }
 
     enum EcoGateType {
       ECO_CONST_0_GATE = 0,
@@ -90,6 +93,9 @@ namespace cir {
     
     
     bool _isOld; // record gate belongs to old/new circuiit
+
+    // simulation stuffs
+    vector<size_t> _simVals;
 };
 
 
@@ -209,6 +215,9 @@ class EcoNtk {
     Abc_Ntk_t* getAbcNtk() { return _pAbcNtk; }
     vector<EcoCut*> getGateCuts(EcoGate* g) { if(!_gate2Cuts.count(g)) return {}; return _gate2Cuts.at(g); }
     const vector<CirGate*> getAigDfsList() const { CirMgr* pCirMgr = cirV->getEcoCirV(); return pCirMgr->_dfsList; }
+
+    // simulation functions
+    void simOnPats(size_t** pats, unsigned nPats);
   private:
     unordered_set<string> gateTypeStrings = {"and", "or", "nand", "nor", "not", "buf", "xor", "xnor"};
     // map that records gate name 2 gates
