@@ -50,6 +50,36 @@ EcoCut::reportCut() {
 }
 
 
+void
+EcoCut::collectCurConeGateRec(EcoGate* g, vector<EcoGate*>& gateList) {
+    // check if the gate is already visited
+    if(g->isGlobalTrav()) return;
+    g->setToGlobalTrav();
+
+    // if the gate if a leaf gate, return directly
+    if(_leaves.count(g)) return;
+
+    // push the gate
+    gateList.push_back(g);
+
+    // traverse its children
+    for(unsigned i=0; i<g->getNumFanins(); ++i) {
+        collectCurConeGateRec(g->getFanin(i), gateList);
+    }
+}
+
+// collect the gates within the cut
+vector<EcoGate*>
+EcoCut::collectCurConeGate() {
+    vector<EcoGate*> ret;
+
+    EcoGate::setGlobalTrav(); // increment the trav flag
+    collectCurConeGateRec(_root, ret);
+
+    return ret;
+}
+
+
 // to avoid redundant cuts
 bool
 EcoNtk::computeAndInsertSigature(EcoCut* pCut) {

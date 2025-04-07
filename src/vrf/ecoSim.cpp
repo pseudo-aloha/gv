@@ -29,14 +29,14 @@ unsigned BitCount(size_t u) {
 
 // conduct random simulation on old/new circuit
 void
-EcoMgr::doRandomSim(unsigned nPatterns) {
+EcoMgr::doRandomSim() {
     extern void printBits(size_t tt);
     assert(_oldNtk->getNumPis() == _newNtk->getNumPis());
     unsigned nPis = _oldNtk->getNumPis();
-    size_t** patterns = new size_t*[nPatterns];
+    size_t** patterns = new size_t*[getNumSim()];
 
     // generate simulation patterns for PIs
-    for(unsigned patId=0; patId<nPatterns; ++patId) {
+    for(unsigned patId=0; patId<getNumSim(); ++patId) {
         patterns[patId] = new size_t[nPis];
         for(unsigned piId=0; piId<nPis; ++piId) {
             patterns[patId][piId] = size_t(0);
@@ -46,11 +46,11 @@ EcoMgr::doRandomSim(unsigned nPatterns) {
         }
     }
 
-    _oldNtk->simOnPats(patterns, nPatterns);
-    _newNtk->simOnPats(patterns, nPatterns);
+    _oldNtk->simOnPats(patterns, getNumSim());
+    _newNtk->simOnPats(patterns, getNumSim());
     
     // free the pointers
-    for(unsigned patId=0; patId<nPatterns; ++patId)
+    for(unsigned patId=0; patId<getNumSim(); ++patId)
         delete patterns[patId];
     delete patterns;
 }
@@ -60,37 +60,36 @@ EcoMgr::doRandomSim(unsigned nPatterns) {
 // get the cosine similarity of two gates with respect to the po id
 // using O(nPats)
 double
-EcoMgr::getCosieSimilarity(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, unsigned poId) {
+EcoMgr::getCosineSimilarity(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, unsigned poId) {
     extern void printBits(size_t tt);
     gv::cir::EcoGate* oldPo = _oldNtk->getPo(poId)->getFanin(0);
     gv::cir::EcoGate* newPo = _newNtk->getPo(poId)->getFanin(0);
-    unsigned nPats = oldPo->getSimVal().size();
-    cout << "nPats : " << oldPo->getSimVal().size() << " " << oldGate->getSimVal().size() << " " << newGate->getSimVal().size() << " " << newPo->getSimVal().size() << endl;
+
+    // cout << "nPats : " << oldPo->getSimVal().size() << " " << oldGate->getSimVal().size() << " " << newGate->getSimVal().size() << " " << newPo->getSimVal().size() << endl;
     // assert((oldPo->getSimVal().size() == newPo->getSimVal().size() == oldGate->getSimVal().size() == newGate->getSimVal().size()));
     unsigned numGood = 0;
     unsigned numSame = 0;
 
     
 
-    for(unsigned i=0; i<nPats; ++i) {
-        size_t oldPoVal = oldPo->getSimVal().at(i);
-        size_t newPoVal = newPo->getSimVal().at(i);
-        size_t goodVectorMask = (oldPoVal ^ newPoVal);
+    for(unsigned i=0; i<getNumSim(); ++i) {
+        size_t oldPoVal = oldPo->getSimVal(i);
+        size_t newPoVal = newPo->getSimVal(i);
+        size_t goodVectorMask = ~(oldPoVal ^ newPoVal);
 
-        size_t oldGateVal = oldGate->getSimVal().at(i);
-        size_t newGateVal = newGate->getSimVal().at(i);
+        size_t oldGateVal = oldGate->getSimVal(i);
+        size_t newGateVal = newGate->getSimVal(i);
 
-        size_t xorVal = (oldGateVal ^ newGateVal);
-
+        size_t xnorVal = ~(oldGateVal ^ newGateVal);
+        
         // use the mask to filter out the bits outside of good vector
-        xorVal &= goodVectorMask;
-        xorVal &= goodVectorMask;
+        xnorVal &= goodVectorMask;
 
         numGood += BitCount(goodVectorMask);
-        numSame += BitCount(xorVal);
+        numSame += BitCount(xnorVal);
     }
 
-    return numGood ? numSame / numGood : 0;
+    return numGood ? ((double)numSame / numGood) : -1;
 }
 
 #endif

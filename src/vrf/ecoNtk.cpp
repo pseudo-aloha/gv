@@ -378,9 +378,11 @@ EcoNtk::abcReadFile() {
       ecoGate->ecoGateVComp = Abc_ObjIsComplement(pNode->pCopy) ? true : false;
     }
     else { // handle the const gate case (const node name in abc is not the same as in my data structure )
-      cirGate = cirV->getGate(0); // get the const 0 gate of cirV
+      cirGate = cirV->getEcoCirV()->_const0; // get the const 0 gate of cirV
       ecoGate = Abc_ObjIsComplement(pNode->pCopy) ? getConst0Gate() : getConst1Gate();
       ecoGate->ecoGateVComp = Abc_ObjIsComplement(pNode->pCopy) ? false : true; // since abc's const gate is const1 and ours is const0
+      cout << "eco " << ecoGate->getGateName() << endl;
+      cout << "cirgate : " << cirGate->getTypeStr() << endl;
     }
     ecoGate->ecoGateV = cirGate;
     ecoGate->_pAbcNode = pNode->pCopy;
@@ -473,9 +475,11 @@ EcoNtk::parsePI(const string& dir) {
   file.close();
   EcoGate* const0 = new EcoGate("const0", "1'b0");
   _gateName2Gate["1'b0"] = const0;
+  GateVec.push_back(const0);
   // _PIList.push_back(const0);
   EcoGate* const1 = new EcoGate("const1", "1'b1");
   _gateName2Gate["1'b1"] = const1;
+  GateVec.push_back(const1);
   // _PIList.push_back(const1);
   sort(_PIList.begin(), _PIList.end(), [](EcoGate* g1, EcoGate* g2) {
     return (g1->getGateName() < g2->getGateName());
@@ -510,10 +514,12 @@ EcoNtk::simOnPats(size_t** pats, unsigned nPats) {
     }
     // sim using the dfs list
     CirMgr* pCirMgr = cirV->getEcoCirV();
-    for(const auto& g : pCirMgr->_dfsList)
+    for(const auto& g : pCirMgr->_dfsList) {
       g->pSim();
+    }
     // add the sim value to the gate
     for(auto& g : GateVec) {
+      if(g->getGateType() == EcoGate::ECO_CONST_0_GATE || g->getGateType() == EcoGate::ECO_CONST_1_GATE) continue;
       size_t val = g->getAigNode()->getPValue()();
       if(g->getAigNodeInv())
         val = ~val;

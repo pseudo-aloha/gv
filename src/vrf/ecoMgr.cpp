@@ -10,6 +10,8 @@ namespace eco {
 // top function to do ECO
 void
 EcoMgr::doEco(const string& oldDesignName, const string& newDesignName) {
+  _nSim = 10000;
+
   // read designs
   readDesigns(oldDesignName, newDesignName);
 
@@ -17,7 +19,7 @@ EcoMgr::doEco(const string& oldDesignName, const string& newDesignName) {
   doFraig();
 
   // dp random sim
-  doRandomSim(10);
+  doRandomSim();
 
   // do matching
   doMatching(6); // enumerate 6-feasible cuts
@@ -217,7 +219,6 @@ EcoMgr::getMergedAig(gv::cir::EcoGate* g) {
 void
 EcoMgr::doMatching(unsigned kFeassible) {
   
-  
   // build cut hashing table
   _pNpnHash = new EcoNPNHash(2, 4); // we compute the npn cut hash from 2 <= cut size <= 4
   _pNpnHash->computeNpnHash();
@@ -236,6 +237,7 @@ EcoMgr::doMatching(unsigned kFeassible) {
 
 
   // report RP pairs
+  // reportRPPair();
   // for(auto[oldGate, newGate] : _RPPair) {
   //   cout << oldGate->getGateFullName() << " -> " << newGate->getGateFullName() << endl;
   // }

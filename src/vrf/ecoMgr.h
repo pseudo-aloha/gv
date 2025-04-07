@@ -52,8 +52,9 @@ public:
   // constructor
   EcoMgr () { _oldNtk = new gv::cir::EcoNtk;
               _newNtk = new gv::cir::EcoNtk;
-              _patchNtk = new gv::cir::EcoNtk; }
-  ~EcoMgr () { delete _oldNtk; delete _newNtk; delete _patchNtk; }
+              _patchNtk = new gv::cir::EcoNtk;
+              _selectorNtk = new gv::cir::EcoNtk; }
+  ~EcoMgr () { delete _oldNtk; delete _newNtk; delete _patchNtk; delete _selectorNtk; }
   
   // main step function
   void doEco(const string& oldDesignName, const string& newDesignName);
@@ -63,8 +64,8 @@ public:
 
   // matching functions
   // general matching function
-  void matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate); // match the cuts at the gate pair
-  bool match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut);
+  void matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo = -1); // match the cuts at the gate pair
+  bool match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo = -1);
   vector<size_t>  getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut);
   vector<size_t> simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vector<int>& comb);
   bool checkMatchValid(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int outputInv, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch); // function to check that if the matching is indeed valid
@@ -89,6 +90,8 @@ public:
   unordered_set<gv::cir::EcoGate*> getMergedGates(gv::cir::EcoGate* g) { if(!_mergeTable.count(g)) return {}; return _mergeTable.at(g); }
   unordered_set<gv::cir::EcoGate*> getInvMergedGates(gv::cir::EcoGate* g) { if(!_invMergeTable.count(g)) return {}; return _invMergeTable.at(g); }
   bool isMerged(gv::cir::EcoGate* g) { return (_mergeTable.count(g) || _invMergeTable.count(g)); }
+  unsigned getGatesEqStatus(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate);
+
   // get the aig of merged aig and pole
   pair<gv::cir::CirGate*, bool> getMergedAig(gv::cir::EcoGate* g);
 
@@ -101,24 +104,41 @@ public:
   pair<string, vector<vector<int>>> getNPNHashFull(gv::cir::EcoCut* cut);
 
   // simulation methods
-  void doRandomSim(unsigned nPatterns);
+  void doRandomSim();
+  const unsigned getNumSim() { return _nSim; }
 
   // get Gate similarity functions
-  double getCosieSimilarity(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, unsigned poId);
+  double getCosineSimilarity(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, unsigned poId);
 
   // Record RP  Pair
-  void addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) { _RPPair[oldGate] = newGate; }
-  gv::cir::EcoGate* getRPGate(gv::cir::EcoGate* oldGate) { if(!_RPPair.count(oldGate)) return nullptr; return _RPPair.at(oldGate);}
-
+  void addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir::EcoGate* fixedFanout, bool inv);
+  void reportRPPair();
+  
   // generate patch
   void genPatch();
   void collectPatchGates(gv::cir::EcoGate* g, bool isEntry);
   bool applyNCheckPatch();
+
+  // enum
+  enum EQStatus {
+    ECO_GATES_NEQ = 0,     // the two gates are not eq
+    ECO_GATES_EQ = 1,      // the two gates are eq
+    ECO_GATES_INV_EQ = 2   // the two gates are eq after inverted
+  };
   
 
 private:
+  // input ntks 
   gv::cir::EcoNtk* _oldNtk;
   gv::cir::EcoNtk* _newNtk;
+  
+  // selector ntk things
+  void buildSelector();
+  void buildSelectorForIthPo(unsigned i);
+  void buildSelectorForIthPoRec(gv::cir::EcoGate* selectorGate, gv::cir::EcoGate* origNtkGate);
+  gv::cir::EcoNtk* _selectorNtk;
+
+  // patch ntk
   gv::cir::EcoNtk* _patchNtk;
 
   // record the merge information
@@ -136,7 +156,10 @@ private:
   EcoNPNHash* _pNpnHash;
 
   // record the RP pair
-  unordered_map<gv::cir::EcoGate*, gv::cir::EcoGate*> _RPPair; // record the RP pair
+  unordered_map<gv::cir::EcoGate*, vector<pair<gv::cir::EcoGate*, vector<gv::cir::EcoGate*>>>> _rpTable; // record the ith circuit in old gate matched to jth gate in new circuit and also record the pole
+
+  // record how many patterns has been simmed
+  unsigned _nSim;
 };
 
 }

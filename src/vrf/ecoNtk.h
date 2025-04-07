@@ -4,6 +4,7 @@
 #include "cirMgr.h"
 #include "cirGate.h"
 #include <vector>
+#include <limits>
 
 #include "abcMgr.h"
 #include "yosysMgr.h"
@@ -57,7 +58,7 @@ namespace cir {
       bool isGlobalTrav() { return (_travFlag == _globalTravFlag);}
 
       // sim val
-      const vector<size_t>& getSimVal() { return _simVals; }
+      const size_t getSimVal(unsigned i) { if(_gateType == ECO_CONST_0_GATE) return size_t(0); if(_gateType == ECO_CONST_1_GATE) return size_t(std::numeric_limits<size_t>::max());  return _simVals.at(i); }
 
     enum EcoGateType {
       ECO_CONST_0_GATE = 0,
@@ -127,6 +128,10 @@ public:
   const string getNPNClass() const { return _npnClass; }
 
   void setNumMergedLeaves(unsigned i) { _numMergedLeaves = i; };
+
+  // collect the gates within the cut
+  vector<EcoGate*> collectCurConeGate();
+  void collectCurConeGateRec(EcoGate* g, vector<EcoGate*>& gateList);
 
   // report functions
   void reportCut();
