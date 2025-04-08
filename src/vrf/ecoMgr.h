@@ -16,6 +16,7 @@ namespace eco {
 class EcoMgr;
 class EcoCir;
 class NPNHash;
+class EcoRPInfo;
 
 // class to store the cut hashing things
 class EcoNPNHash {
@@ -43,6 +44,19 @@ private:
   unsigned _cutSizeTo; // to which we comute the NPN-eq class
   vector<vector<pair<string, vector<int>>>> _npnHashTable;
   vector<vector<int>> _npnHashWays;
+};
+
+class EcoRPInfo {
+public:
+  EcoRPInfo(gv::cir::EcoGate* mappedGate, gv::cir::EcoGate* fixedFanout, bool mappedPole) : _mappedGate(mappedGate), _fixedFanout(fixedFanout), _mappedPole(mappedGate) {}
+  gv::cir::EcoGate* getMappedGate() { return _mappedGate; }
+  gv::cir::EcoGate* getFixedFanout() { return _fixedFanout; }
+  bool getMappedPole() { return _mappedPole; }
+  
+private:
+  gv::cir::EcoGate* _mappedGate;
+  gv::cir::EcoGate* _fixedFanout;
+  bool _mappedPole;
 };
 
 
@@ -111,7 +125,7 @@ public:
   double getCosineSimilarity(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, unsigned poId);
 
   // Record RP  Pair
-  void addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir::EcoGate* fixedFanout, bool inv);
+  void addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir::EcoGate* fixedFanout, bool inv, unsigned fixedPo);
   void reportRPPair();
   
   // generate patch
@@ -156,7 +170,7 @@ private:
   EcoNPNHash* _pNpnHash;
 
   // record the RP pair
-  unordered_map<gv::cir::EcoGate*, vector<pair<gv::cir::EcoGate*, vector<gv::cir::EcoGate*>>>> _rpTable; // record the ith circuit in old gate matched to jth gate in new circuit and also record the pole
+  vector<unordered_map<gv::cir::EcoGate*, EcoRPInfo*>> _rpTable; // record the ith circuit in old gate matched to jth gate in new circuit and also record the pole
 
   // record how many patterns has been simmed
   unsigned _nSim;

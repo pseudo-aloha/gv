@@ -39,10 +39,11 @@ EcoMgr::buildSelectorForIthPoRec(gv::cir::EcoGate* selectorGate, gv::cir::EcoGat
     // create the corresponding gates in the selector circuit
     gv::cir::EcoGate* g = new gv::cir::EcoGate(origNtkGate->getGateTypeName(), origNtkGate->getGateFullName());
     _selectorNtk->addGate(g);
+    selectorGate->addFanin(g); // add the newly created gate as fanin
     
     // recursive traverse
     for(unsigned i=0; i<origNtkGate->getNumFanins(); ++i) {
-        buildSelectorForIthPoRec(selectorGate, origNtkGate->getFanin(i));
+        buildSelectorForIthPoRec(g, origNtkGate->getFanin(i));
     }
 }
 

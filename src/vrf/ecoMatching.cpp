@@ -26,7 +26,7 @@ EcoMgr::getGatesEqStatus(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) {
 // add the RP pair
 // gate a fixed to gate b can fix fanout #i
 void
-EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir::EcoGate* fixedFanout, bool inv) {
+EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir::EcoGate* fixedFanout, bool inv, unsigned fixedPo) {
     gv::cir::EcoGate* newGateWithInv = inv ? (gv::cir::EcoGate*)((size_t)newGate ^ (0x1)) : newGate;
     
     // if(isMerged(oldGate)) {
@@ -35,43 +35,33 @@ EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir:
     cout << "old gate : " << oldGate->getGateFullName() << " new gate : " << newGate->getGateFullName() << " eq status : " << getGatesEqStatus(oldGate, newGate) << endl;
 
     // if the oldgate is not yet be fixed to another gate, simply add it
-    if(!_rpTable.count(oldGate)) {
-        _rpTable[oldGate].push_back({newGateWithInv, {fixedFanout}});
-    }
-    else {
-        bool found = false;
-        for(unsigned i=0; i<_rpTable.at(oldGate).size(); ++i) {
-            auto&[ng, fixFanouts] = _rpTable.at(oldGate).at(i);
-            if(ng == newGateWithInv) {
-                fixFanouts.push_back(fixedFanout);
-                found = true;
-                break;
-            }
-        }
-        if(!found)
-            _rpTable.at(oldGate).push_back({newGateWithInv, {fixedFanout}});
+    if(!_rpTable.at(fixedPo).count(oldGate)) {
+        EcoRPInfo* pRPInfo = new EcoRPInfo(newGate, fixedFanout, inv);
+        assert(!_rpTable.at(fixedPo).count(oldGate));
+        _rpTable.at(fixedPo)[oldGate] = pRPInfo;
     }
 }
 
 // report the recorded RP pairs
 void
 EcoMgr::reportRPPair() {
-    for(auto[oldGate, fixInfo] : _rpTable) {
-        cout << oldGate->getGateFullName() << endl;
-        cout << setw(5) << "=>";
-        for(auto[newGateWithInv, fixedFanouts] : fixInfo) {
-            gv::cir::EcoGate* newGate = (gv::cir::EcoGate*)((size_t)newGateWithInv & (size_t(std::numeric_limits<size_t>::max()) - 1));
-            bool inv = ((size_t)newGateWithInv & 0x1);
-            for(unsigned j=0; j<fixedFanouts.size(); ++j)
-                cout << setw(20) << (inv ? "!" : "") + newGate->getGateFullName();
-        }
-        cout << endl;
-        cout << setw(5) << "fix";
-        for(auto[newGateWithInv, fixedFanouts] : fixInfo) {
-            for(unsigned j=0; j<fixedFanouts.size(); ++j)
-                cout << setw(20) << fixedFanouts.at(j)->getGateFullName();
-        }
-        cout << endl;
+    for(auto poRP : _rpTable) {
+
+        // cout << oldGate->getGateFullName() << endl;
+        // cout << setw(5) << "=>";
+        // for(auto[newGateWithInv, fixedFanouts] : fixInfo) {
+        //     gv::cir::EcoGate* newGate = (gv::cir::EcoGate*)((size_t)newGateWithInv & (size_t(std::numeric_limits<size_t>::max()) - 1));
+        //     bool inv = ((size_t)newGateWithInv & 0x1);
+        //     for(unsigned j=0; j<fixedFanouts.size(); ++j)
+        //         cout << setw(20) << (inv ? "!" : "") + newGate->getGateFullName();
+        // }
+        // cout << endl;
+        // cout << setw(5) << "fix";
+        // for(auto[newGateWithInv, fixedFanouts] : fixInfo) {
+        //     for(unsigned j=0; j<fixedFanouts.size(); ++j)
+        //         cout << setw(20) << fixedFanouts.at(j)->getGateFullName();
+        // }
+        // cout << endl;
     }
 }
 
@@ -81,6 +71,7 @@ EcoMgr::reportRPPair() {
 void
 EcoMgr::doOutputSideMatching() {
     unsigned nPo = _oldNtk->getNumPos();
+    _rpTable.resize(nPo);
     
     for(unsigned i=0; i<nPo; ++i) {
         matchOnePo(i);
@@ -806,7 +797,7 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
             cout << "gate " << g->getGateFullName() << " fixed fanout " << fo->getGateFullName() << endl;
         }
 
-        addRPPair(oldGate, newGate, fixedFanout.at(oldGate), inv);
+        addRPPair(oldGate, newGate, fixedFanout.at(oldGate), inv, ithPo);
     }
     cout << "----------------" << endl;
 
