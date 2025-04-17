@@ -39,6 +39,8 @@ EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir:
         EcoRPInfo* pRPInfo = new EcoRPInfo(newGate, fixedFanout, inv);
         assert(!_rpTable.at(fixedPo).count(oldGate));
         _rpTable.at(fixedPo)[oldGate] = pRPInfo;
+        cout << "tm " << oldGate->getGateFullName() << " " << pRPInfo->getMappedGate()->getGateFullName() << endl;
+        // assert(0);
     }
 }
 
@@ -46,22 +48,9 @@ EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir:
 void
 EcoMgr::reportRPPair() {
     for(auto poRP : _rpTable) {
+        for(auto[oldGate, roInfo] : poRP) {
 
-        // cout << oldGate->getGateFullName() << endl;
-        // cout << setw(5) << "=>";
-        // for(auto[newGateWithInv, fixedFanouts] : fixInfo) {
-        //     gv::cir::EcoGate* newGate = (gv::cir::EcoGate*)((size_t)newGateWithInv & (size_t(std::numeric_limits<size_t>::max()) - 1));
-        //     bool inv = ((size_t)newGateWithInv & 0x1);
-        //     for(unsigned j=0; j<fixedFanouts.size(); ++j)
-        //         cout << setw(20) << (inv ? "!" : "") + newGate->getGateFullName();
-        // }
-        // cout << endl;
-        // cout << setw(5) << "fix";
-        // for(auto[newGateWithInv, fixedFanouts] : fixInfo) {
-        //     for(unsigned j=0; j<fixedFanouts.size(); ++j)
-        //         cout << setw(20) << fixedFanouts.at(j)->getGateFullName();
-        // }
-        // cout << endl;
+        }
     }
 }
 

@@ -387,7 +387,7 @@ EcoMgr::getNPNHash(gv::cir::EcoCut* cut) {
   unsigned cutSize = cut->getCutSize(); // get the cut size
   size_t cutTT;
   // get the truth table of the cut
-  if(cut->getRoot()->isOld())
+  if(cut->getRoot()->getGateNtk() == gv::cir::EcoGate::ECO_OLD_NTK)
     cutTT = _oldNtk->computeCutTT(cut);
   else
     cutTT = _newNtk->computeCutTT(cut);
@@ -401,7 +401,7 @@ EcoMgr::getNPNHashFull(gv::cir::EcoCut* cut) {
   unsigned cutSize = cut->getCutSize(); // get the cut size
   size_t cutTT;
   // get the truth table of the cut
-  if(cut->getRoot()->isOld())
+  if(cut->getRoot()->getGateNtk() == gv::cir::EcoGate::ECO_OLD_NTK)
     cutTT = _oldNtk->computeCutTT(cut);
   else
     cutTT = _newNtk->computeCutTT(cut);

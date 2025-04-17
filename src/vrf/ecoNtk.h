@@ -37,17 +37,19 @@ namespace cir {
       EcoGate(string gateType, string gateName);
       ~EcoGate();
       string getGateName() { return _gateName; }
-      string getGateFullName() { return _gateName + (_isOld ? "_O" : "_N"); }
+      string getGateFullName();
       string getGateTypeName();
       unsigned getGateType() { return _gateType; }
       unsigned getNumFanins() { return _fanins.size(); }
       EcoGate* getFanin(unsigned i) { if(i>=_fanins.size()) return nullptr; return _fanins.at(i); }
       void reportGate();
-      bool isOld() { return _isOld; }
-      void setOld(bool isOld) { _isOld = isOld; }
       bool getAigNodeInv() { return ecoGateVComp; }
       CirGate* getAigNode() { return ecoGateV; }
-  
+
+      // record the gate belongs to which ntk
+      unsigned getGateNtk() { return _gateNtk; }
+      void setOld(unsigned gateNtk) { _gateNtk = gateNtk; }
+
       // add function
       void addFanin(EcoGate* g) { _fanins.push_back(g); }
   
@@ -59,6 +61,11 @@ namespace cir {
 
       // sim val
       const size_t getSimVal(unsigned i) { if(_gateType == ECO_CONST_0_GATE) return size_t(0); if(_gateType == ECO_CONST_1_GATE) return size_t(std::numeric_limits<size_t>::max());  return _simVals.at(i); }
+
+      // gate type check function
+      bool isConstGate() { return (getGateType() == ECO_CONST_0_GATE || getGateType() == ECO_CONST_1_GATE); }
+      bool isPi()        { return (getGateType() == ECO_PI_GATE); }
+      bool isPiOrConst() { return (isConstGate() || isPi()); }
 
     enum EcoGateType {
       ECO_CONST_0_GATE = 0,
@@ -73,6 +80,13 @@ namespace cir {
       ECO_NOT_GATE = 9,
       ECO_PI_GATE = 10,
       ECO_PO_GATE = 11
+    };
+
+    // record the gate belong to which ntk
+    enum EcoGateNtk {
+      ECO_OLD_NTK = 0,
+      ECO_NEW_NTK = 1,
+      ECO_NONE_NTK = 2 // other ntk, like selector or patch ntk etc.
     };
   private:
     // Gate attributes
@@ -93,7 +107,7 @@ namespace cir {
     unsigned _travFlag;
     
     
-    bool _isOld; // record gate belongs to old/new circuiit
+    unsigned _gateNtk; // record gate belongs to old/new circuiit or others...
 
     // simulation stuffs
     vector<size_t> _simVals;
@@ -202,7 +216,7 @@ class EcoNtk {
     // add function
     void addPo(EcoGate* g) { _POList.push_back(g); }
     void addPi(EcoGate* g) { _PIList.push_back(g); }
-    void addGate(EcoGate* g) { if(!_gateName2Gate.count(g->getGateName())) _gateName2Gate[g->getGateName()] = g; GateVec.push_back(g); }
+    void addGate(EcoGate* g) { if(!_gateName2Gate.count(g->getGateName())) _gateName2Gate[g->getGateName()] = g; GateVec.push_back(g); if(g->isPi()) addPi(g); }
     
 
     // get functions
@@ -223,6 +237,10 @@ class EcoNtk {
 
     // simulation functions
     void simOnPats(size_t** pats, unsigned nPats);
+
+    // write the ntk as a verilog file
+    void writeNtkVerilog(const string& fileName);
+    
   private:
     unordered_set<string> gateTypeStrings = {"and", "or", "nand", "nor", "not", "buf", "xor", "xnor"};
     // map that records gate name 2 gates

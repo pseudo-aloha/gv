@@ -45,7 +45,7 @@ EcoGate::getGateTypeName() {
   }
 }
 
-EcoGate::EcoGate(string gateType, string gateName) : ecoGateVComp(false), ecoGateV(nullptr), _pAbcNode(nullptr) {
+EcoGate::EcoGate(string gateType, string gateName) : ecoGateVComp(false), ecoGateV(nullptr), _pAbcNode(nullptr), _gateNtk(ECO_NONE_NTK) {
   _travFlag = 0;
   _gateName = gateName;
   if(gateType == "const0")
@@ -78,11 +78,19 @@ EcoGate::~EcoGate() {
   _simVals.clear();
 }
 
+// report the gate name appendded with _O/_N if they are in old or new circuit
+string
+EcoGate::getGateFullName() {
+  if(isPiOrConst() || _gateNtk > ECO_NEW_NTK)
+    return getGateName();
+  return getGateName() + ((_gateNtk == ECO_OLD_NTK) ? "_O" : "_N");
+}
+
 void
 EcoGate::reportGate() {
-  cout << getGateTypeName() << " " << getGateName() << " ";
+  cout << getGateTypeName() << " " << getGateFullName() << " ";
   for(const auto& fanin : _fanins) {
-    cout << fanin->getGateName() << " ";
+    cout << fanin->getGateFullName() << " ";
   }
   cout << endl;
 }
@@ -526,6 +534,73 @@ EcoNtk::simOnPats(size_t** pats, unsigned nPats) {
       g->_simVals.push_back(val);
     }
   }
+}
+
+void
+EcoNtk::writeNtkVerilog(const string& fileName) {
+  gv::cir::EcoGate::setGlobalTrav();
+    // write the ntk
+    ofstream f(fileName);
+    f << "module top(";
+    for(unsigned i=0; i<getNumPos(); ++i) {
+        f << getPo(i)->getGateName();
+        f << ", ";
+    }
+    for(unsigned i=0; i<getNumPis(); ++i) {
+        f << getPi(i)->getGateName();
+        if(i < getNumPis() - 1)
+            f << ", ";
+    }
+    f << ");" << endl << endl;
+    f << "output ";
+    for(unsigned i=0; i<getNumPos(); ++i) {
+        if((i + 1) % 10 == 0) {
+            f << ";" << endl;
+            f << "output ";
+        }
+        f << getPo(i)->getGateName();
+        if(i < getNumPos() - 1 && (i + 2) % 10 != 0)
+            f << ", ";
+    }
+    f << ";" << endl << endl;
+    
+    f << "input ";
+    for(unsigned i=0; i<getNumPis(); ++i) {
+      if((i + 1) % 10 == 0) {
+          f << ";" << endl;
+          f << "input ";
+      }
+      f << getPi(i)->getGateName();
+      if(i < getNumPis() - 1 && (i + 2) % 10 != 0)
+          f << ", ";
+    }
+    f << ";" << endl << endl;
+
+    f << "wire ";
+    for(unsigned i=0; i<getNumGates(); ++i) {
+        if((i + 1) % 10 == 0) {
+            f << ";" << endl;
+            f << "wire ";
+        }
+        f << getGate(i)->getGateName();
+        if(i < getNumGates() - 1 && (i + 2) % 10 != 0)
+            f << ", ";
+    }
+    f << ";" << endl << endl;
+    for(unsigned i=0; i<getNumGates(); ++i) {
+        auto g = getGate(i);
+        if(g->isPiOrConst()) continue; // no need to write pi/const gates
+        f << g->getGateTypeName() << " (" << g->getGateName() << ", ";
+        for(unsigned j=0; j<g->getNumFanins(); ++j) {
+            auto fanin = g->getFanin(j);
+            f << fanin->getGateName();
+            if(j < g->getNumFanins() - 1)
+                f << ", ";
+        }
+        f << ");" << endl;
+    }
+    f << "endmodule" << endl;
+    f.close();gv::cir::EcoGate::setGlobalTrav();
 }
 
 }

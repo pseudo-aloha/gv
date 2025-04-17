@@ -149,8 +149,11 @@ private:
   // selector ntk things
   void buildSelector();
   void buildSelectorForIthPo(unsigned i);
-  void buildSelectorForIthPoRec(gv::cir::EcoGate* selectorGate, gv::cir::EcoGate* origNtkGate);
+  void buildSelectorForIthOldPoRec(gv::cir::EcoGate* selectorGate, gv::cir::EcoGate* origNtkGate, unsigned ithPo);
+  void buildSelectorForIthNewPoRec(gv::cir::EcoGate* selectorGate, gv::cir::EcoGate* origNtkGate, unsigned ithPo);
+  void addSelectorGate(gv::cir::EcoGate* );
   gv::cir::EcoNtk* _selectorNtk;
+  unordered_map<gv::cir::EcoGate*, gv::cir::EcoGate*> _selectorGateMap;
 
   // patch ntk
   gv::cir::EcoNtk* _patchNtk;

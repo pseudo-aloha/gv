@@ -34,14 +34,14 @@ EcoMgr::readDesigns(const string& oldDesignName, const string& newDesignName) {
   _oldNtk->readNtkFile(oldDesignName);
   _newNtk->readNtkFile(newDesignName);
   for(size_t i=0; i<_oldNtk->getNumGates(); i++)
-    _oldNtk->getGate(i)->setOld(true);
+    _oldNtk->getGate(i)->setOld(gv::cir::EcoGate::ECO_OLD_NTK);
   for(size_t i=0; i<_oldNtk->getNumPos(); i++) {
-    _oldNtk->getPo(i)->setOld(true);
+    _oldNtk->getPo(i)->setOld(gv::cir::EcoGate::ECO_OLD_NTK);
   }
   for(size_t i=0; i<_newNtk->getNumGates(); i++)
-    _newNtk->getGate(i)->setOld(false);
+    _newNtk->getGate(i)->setOld(gv::cir::EcoGate::ECO_NEW_NTK);
   for(size_t i=0; i<_newNtk->getNumPos(); i++)
-    _newNtk->getPo(i)->setOld(false);
+    _newNtk->getPo(i)->setOld(gv::cir::EcoGate::ECO_NEW_NTK);
 }
 
 void Net2PO( Abc_Ntk_t* pNtk)
