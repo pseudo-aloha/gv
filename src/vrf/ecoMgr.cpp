@@ -243,7 +243,7 @@ EcoMgr::doMatching(unsigned kFeassible) {
   // }
 
   // generate patch
-  // genPatch();
+  genPatch();
 }
 
 

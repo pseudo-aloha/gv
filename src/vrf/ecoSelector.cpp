@@ -90,14 +90,15 @@ EcoMgr::buildSelectorForIthOldPoRec(gv::cir::EcoGate* selectorGate, gv::cir::Eco
 
             }
         }
-        cout << "chaing orignatkgate : " << origNtkGate->getGateFullName() << " " << pEcoRpInfo->getMappedGate()->getGateFullName() << endl;
         origNtkGate = pEcoRpInfo->getMappedGate();
         
     }
 
     // if the gate is already traversed, return
-    if(origNtkGate->isGlobalTrav())
+    if(origNtkGate->isGlobalTrav()) {
+        selectorGate->addFanin(_selectorGateMap.at(origNtkGate));
         return;
+    }
     // mark the gate as traversed
     origNtkGate->setToGlobalTrav();
     cout << "trav : " << origNtkGate->getGateFullName() << endl;
@@ -105,7 +106,6 @@ EcoMgr::buildSelectorForIthOldPoRec(gv::cir::EcoGate* selectorGate, gv::cir::Eco
     _selectorGateMap[g] = origNtkGate; // record the gate in the selector maps to which gate
     _selectorGateMap[origNtkGate] = g;
     selectorGate->addFanin(g);
-    cout << "map " << origNtkGate->getGateFullName() << " " << g->getGateFullName() << endl;
     _selectorNtk->addGate(g);
     selectorGate = g;
 

@@ -48,7 +48,7 @@ private:
 
 class EcoRPInfo {
 public:
-  EcoRPInfo(gv::cir::EcoGate* mappedGate, gv::cir::EcoGate* fixedFanout, bool mappedPole) : _mappedGate(mappedGate), _fixedFanout(fixedFanout), _mappedPole(mappedGate) {}
+  EcoRPInfo(gv::cir::EcoGate* mappedGate, gv::cir::EcoGate* fixedFanout, bool mappedPole) : _mappedGate(mappedGate), _fixedFanout(fixedFanout), _mappedPole(mappedPole) {}
   gv::cir::EcoGate* getMappedGate() { return _mappedGate; }
   gv::cir::EcoGate* getFixedFanout() { return _fixedFanout; }
   bool getMappedPole() { return _mappedPole; }
@@ -130,6 +130,7 @@ public:
   
   // generate patch
   void genPatch();
+  void decideOutputRewire();
   void collectPatchGates(gv::cir::EcoGate* g, bool isEntry);
   bool applyNCheckPatch();
 

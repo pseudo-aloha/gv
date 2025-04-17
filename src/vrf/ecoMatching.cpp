@@ -27,13 +27,8 @@ EcoMgr::getGatesEqStatus(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) {
 // gate a fixed to gate b can fix fanout #i
 void
 EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir::EcoGate* fixedFanout, bool inv, unsigned fixedPo) {
-    gv::cir::EcoGate* newGateWithInv = inv ? (gv::cir::EcoGate*)((size_t)newGate ^ (0x1)) : newGate;
-    
-    // if(isMerged(oldGate)) {
-        
-    // }
-    cout << "old gate : " << oldGate->getGateFullName() << " new gate : " << newGate->getGateFullName() << " eq status : " << getGatesEqStatus(oldGate, newGate) << endl;
-
+    // cout << "old gate : " << oldGate->getGateFullName() << " new gate : " << newGate->getGateFullName() << " eq status : " << getGatesEqStatus(oldGate, newGate) << endl;
+    cout << "inv " << inv << endl;
     // if the oldgate is not yet be fixed to another gate, simply add it
     if(!_rpTable.at(fixedPo).count(oldGate)) {
         EcoRPInfo* pRPInfo = new EcoRPInfo(newGate, fixedFanout, inv);
@@ -68,7 +63,7 @@ EcoMgr::doOutputSideMatching() {
     }
 
     // 1. build selector
-    buildSelector();
+    // buildSelector();
 
     // 2. choose rp pair
 
@@ -783,7 +778,7 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
         // cout << "old gate : " << oldGate->getGateFullName() << endl;
         // oldCut->reportCut();
         for(auto[g, fo] : fixedFanout) {
-            cout << "gate " << g->getGateFullName() << " fixed fanout " << fo->getGateFullName() << endl;
+            cout << "gate " << g->getGateFullName() << " fixed fanout " << fo->getGateFullName() << " " << inv << endl;
         }
 
         addRPPair(oldGate, newGate, fixedFanout.at(oldGate), inv, ithPo);

@@ -6,77 +6,70 @@
 namespace gv {
 namespace eco {
 
+// decide the output side rewire
+void
+EcoMgr::decideOutputRewire() {
+    // iterate over the rp pair to see the old net is fixed to which net most frequently
+    unordered_set<gv::cir::EcoGate*> oldGates;
+    unordered_map<gv::cir::EcoGate*, vector<pair<gv::cir::EcoGate*, array<unsigned, 2>>>> mp;
+    for(unsigned i=0; i<_rpTable.size(); ++i) {
+        for(auto[oldGate, pEcoRpInfo] : _rpTable.at(i)) {
+            auto mappedGate = pEcoRpInfo->getMappedGate();
+            auto inv = pEcoRpInfo->getMappedPole();
+            if(!mp.count(oldGate)) {
+                pair<gv::cir::EcoGate*, array<unsigned, 2>> mappedCountPair = {mappedGate, {0, 0}};
+                mappedCountPair.second[inv]++;
+                mp[oldGate].push_back(mappedCountPair);
+            }
+            else {
+                bool foundMappedGate = false;
+                for(unsigned j=0; j<mp.at(oldGate).size(); ++j) {
+                    if(mp.at(oldGate).at(j).first == mappedGate) {
+                        mp.at(oldGate).at(j).second[inv]++;
+                        foundMappedGate = true;
+                        break;
+                    }
+                }
+                if(!foundMappedGate) {
+                    pair<gv::cir::EcoGate*, array<unsigned, 2>> mappedCountPair = {mappedGate, {0, 0}};
+                    mappedCountPair.second[inv]++;
+                    mp[oldGate].push_back(mappedCountPair);
+                }
+                
+            }
+            cout << oldGate->getGateFullName() << " " << mappedGate->getGateFullName() << " inv : " << inv << endl;
+        }
+    }
+    cout << "mapped counts : " << endl;
+    for(const auto&[oldGate, vec] : mp) {
+        cout << oldGate->getGateFullName() << " << ";
+        for(const auto&[mappedGate, poleCounts] : vec) {
+            if(poleCounts[0])
+                cout << mappedGate->getGateFullName() << " : " << poleCounts[0] << " | ";
+            if(poleCounts[1])
+                cout << "~" << mappedGate->getGateFullName() << " : " << poleCounts[1] << " | ";
+        }
+        cout << endl;
+    }
+
+}
+
 // generate the patch
 void
 EcoMgr::genPatch() {
     gv::cir::EcoGate::setGlobalTrav();
-    
+    // handle the rewire for output cut matching
+    // decide which net should use rewire
+    decideOutputRewire();
+
     // collect patch circuit from each PO of the new circuit
-    for(unsigned i=0; i<_newNtk->getNumPos(); ++i) {
-        collectPatchGates(_newNtk->getPo(i)->getFanin(0), true);
-    }
+    // for(unsigned i=0; i<_newNtk->getNumPos(); ++i) {
+    //     collectPatchGates(_newNtk->getPo(i)->getFanin(0), true);
+    // }
 
     // write the patch ntk
-    ofstream f("patch.v");
-    f << "module top(";
-    for(unsigned i=0; i<_patchNtk->getNumPos(); ++i) {
-        f << _patchNtk->getPo(i)->getGateName();
-        f << ", ";
-    }
-    for(unsigned i=0; i<_patchNtk->getNumPis(); ++i) {
-        f << _patchNtk->getPi(i)->getGateName();
-        if(i < _patchNtk->getNumPis() - 1)
-            f << ", ";
-    }
-    f << ");" << endl;
-    f << "output ";
-    for(unsigned i=0; i<_patchNtk->getNumPos(); ++i) {
-        if((i + 1) % 10 == 0) {
-            f << ";" << endl;
-            f << "output ";
-        }
-        f << _patchNtk->getPo(i)->getGateName();
-        if(i < _patchNtk->getNumPos() - 1 && (i + 2) % 10 != 0)
-            f << ", ";
-    }
-    f << ";" << endl;
-    
-    f << "input ";
-    for(unsigned i=0; i<_patchNtk->getNumPis(); ++i) {
-        if((i + 1) % 10 == 0) {
-            f << ";" << endl;
-            f << "input ";
-        }
-        f << _patchNtk->getPi(i)->getGateName();
-        if(i < _patchNtk->getNumPis() - 1 && (i + 2) % 10 != 0)
-            f << ", ";
-    }
-    f << ";" << endl;
+    _patchNtk->writeNtkVerilog("patch.v"); // write the patch content
 
-    f << "wire ";
-    for(unsigned i=0; i<_patchNtk->getNumGates(); ++i) {
-        if((i + 1) % 10 == 0) {
-            f << ";" << endl;
-            f << "wire ";
-        }
-        f << _patchNtk->getGate(i)->getGateName();
-        if(i < _patchNtk->getNumGates() - 1 && (i + 2) % 10 != 0)
-            f << ", ";
-    }
-    f << ";" << endl;
-    for(unsigned i=0; i<_patchNtk->getNumGates(); ++i) {
-        auto g = _patchNtk->getGate(i);
-        f << g->getGateTypeName() << " (" << g->getGateName() << ", ";
-        for(unsigned j=0; j<g->getNumFanins(); ++j) {
-            auto fanin = g->getFanin(j);
-            f << fanin->getGateName();
-            if(j < g->getNumFanins() - 1)
-                f << ", ";
-        }
-        f << ");" << endl;
-    }
-    f << "endmodule" << endl;
-    f.close();
 }
 
 void
