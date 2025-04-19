@@ -131,7 +131,7 @@ public:
   // generate patch
   void genPatch();
   void decideOutputRewire();
-  void collectPatchGates(gv::cir::EcoGate* g, bool isEntry);
+  void collectPatchGates(gv::cir::EcoGate* g, gv::cir::EcoGate* curPatchGate, const unsigned& ithPo, bool isEntry);
   bool applyNCheckPatch();
 
   // enum

@@ -28,13 +28,13 @@ EcoMgr::getGatesEqStatus(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) {
 void
 EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir::EcoGate* fixedFanout, bool inv, unsigned fixedPo) {
     // cout << "old gate : " << oldGate->getGateFullName() << " new gate : " << newGate->getGateFullName() << " eq status : " << getGatesEqStatus(oldGate, newGate) << endl;
-    cout << "inv " << inv << endl;
+    // cout << "inv " << inv << endl;
     // if the oldgate is not yet be fixed to another gate, simply add it
     if(!_rpTable.at(fixedPo).count(oldGate)) {
         EcoRPInfo* pRPInfo = new EcoRPInfo(newGate, fixedFanout, inv);
         assert(!_rpTable.at(fixedPo).count(oldGate));
         _rpTable.at(fixedPo)[oldGate] = pRPInfo;
-        cout << "tm " << oldGate->getGateFullName() << " " << pRPInfo->getMappedGate()->getGateFullName() << endl;
+        // cout << "tm " << oldGate->getGateFullName() << " " << pRPInfo->getMappedGate()->getGateFullName() << endl;
         // assert(0);
     }
 }

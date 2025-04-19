@@ -62,10 +62,10 @@ EcoMgr::genPatch() {
     // decide which net should use rewire
     decideOutputRewire();
 
-    // collect patch circuit from each PO of the new circuit
-    // for(unsigned i=0; i<_newNtk->getNumPos(); ++i) {
-    //     collectPatchGates(_newNtk->getPo(i)->getFanin(0), true);
-    // }
+    // collect patch circuit from each PO of the old circuit
+    // if a gate that is reached is fixed to another gate in the new circuit, replace it with the corresponding gate
+    for(unsigned i=0; i<_newNtk->getNumPos(); ++i)
+        collectPatchGates(_newNtk->getPo(i)->getFanin(0), nullptr, i, true);
 
     // write the patch ntk
     _patchNtk->writeNtkVerilog("patch.v"); // write the patch content
@@ -73,36 +73,81 @@ EcoMgr::genPatch() {
 }
 
 void
-EcoMgr::collectPatchGates(gv::cir::EcoGate* g, bool isEntry) {
+EcoMgr::collectPatchGates(gv::cir::EcoGate* g, gv::cir::EcoGate* curPatchGate, const unsigned& ithPo, bool isEntry) {
     if(g->isGlobalTrav()) return;
     g->setToGlobalTrav();
-    if(g->getGateType() == gv::cir::EcoGate::ECO_PI_GATE || g->getGateType() == gv::cir::EcoGate::ECO_CONST_0_GATE || g->getGateType() == gv::cir::EcoGate::ECO_CONST_1_GATE) return;
-    if(isMerged(g)) return;
+
     gv::cir::EcoGate* patchGate;
-    if(!_patchNtk->getGateByName(g->getGateName())) {
-        patchGate = new gv::cir::EcoGate(g->getGateTypeName(), g->getGateName());
-        _patchNtk->addGate(patchGate);
-        if(isEntry) {
-            gv::cir::EcoGate* patchPoGate = new gv::cir::EcoGate("po", g->getGateName());
-            patchPoGate->addFanin(patchGate);
-            _patchNtk->addPo(patchPoGate);
+    
+    // check if the gate is in old circuit to decide how we handle it
+    if(g->isInOldCircuit()) {
+        // 1. check if the gate is fixed to another gate
+        auto rpPairsForIthPo = _rpTable.at(ithPo);
+        if(rpPairsForIthPo.count(g)) {
+            auto pEcoRpInfo = rpPairsForIthPo.at(g);
+            gv::cir::EcoGate* mappedGate = pEcoRpInfo->getMappedGate();
+            auto inv = pEcoRpInfo->getMappedPole();
+            collectPatchGates(mappedGate, nullptr, ithPo, true);
+            return;
         }
+        // if not found, further traverse in the old circuit
+        // else {
+        //     for(unsigned i=0; i<g->getNumFanins(); ++i) {
+        //         auto faninGate = g->getFanin(i);
+        //         collectPatchGates(faninGate, nullptr, ithPo, false);
+        //     }
+        // }
     }
     else {
-        patchGate = _patchNtk->getGateByName(g->getGateName());
+        assert(g->isInNewCircuit()); // check that the circuit is in the new circuit XDDD, just in case
+        cout << "new circuit : " << g->getGateFullName() << endl;
+        if(!_patchNtk->getGateByName(g->getGateName())) {
+            patchGate = new gv::cir::EcoGate(g->getGateTypeName(), g->getGateName());
+            _patchNtk->addGate(patchGate);
+            if(isEntry) {
+                gv::cir::EcoGate* patchPoGate = new gv::cir::EcoGate("po", g->getGateName());
+                patchPoGate->addFanin(patchGate);
+                _patchNtk->addPo(patchPoGate);
+            }
+        }
+        else {
+            patchGate = _patchNtk->getGateByName(g->getGateName());
+        }
+
+        // add the patch gate as a fanin of the fanout of patch gate
+        if(curPatchGate)
+            curPatchGate->addFanin(patchGate);
+
+        // if the gate itself is merged, no further traversal is needed
+        if(isMerged(g)) return;
+
+        // not merged, further traverse in the new circuit
+        // g = patchGate;
+        // for(unsigned i=0; i<g->getNumFanins(); ++i) {
+        //     auto faninGate = g->getFanin(i);
+        //     collectPatchGates(faninGate, patchGate, ithPo, true);
+        // }
     }
-    
-    
+
     cout << "collecting " << g->getGateFullName() << endl;
 
-    // get fanin
+    // if the gate is a PI gate or const gate, stop traversing
+    if(g->isPiOrConst()) return;
+    g->reportGate();
     for(unsigned i=0; i<g->getNumFanins(); ++i) {
-        auto fanin = g->getFanin(i);
-        collectPatchGates(fanin, false);
-        auto faninPatchGate = new gv::cir::EcoGate(fanin->getGateTypeName(), fanin->getGateName());
-        patchGate->addFanin(faninPatchGate);
-        _patchNtk->addGate(faninPatchGate);
+        auto faninGate = g->getFanin(i);
+        cout << "fanin : " << faninGate->getGateFullName() << endl;
+        collectPatchGates(faninGate, patchGate, ithPo, true);
     }
+
+    // // get fanin
+    // for(unsigned i=0; i<g->getNumFanins(); ++i) {
+    //     auto fanin = g->getFanin(i);
+    //     collectPatchGates(fanin, ithPo, false);
+    //     auto faninPatchGate = new gv::cir::EcoGate(fanin->getGateTypeName(), fanin->getGateName());
+    //     patchGate->addFanin(faninPatchGate);
+    //     _patchNtk->addGate(faninPatchGate);
+    // }
 }
 
 }

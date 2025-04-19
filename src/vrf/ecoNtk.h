@@ -48,6 +48,8 @@ namespace cir {
 
       // record the gate belongs to which ntk
       unsigned getGateNtk() { return _gateNtk; }
+      bool isInOldCircuit() { return (getGateNtk() == ECO_OLD_NTK); } // check if the gate is in the old circuit
+      bool isInNewCircuit() { return (getGateNtk() == ECO_NEW_NTK); } // check if the gate is in the new circuit
       void setOld(unsigned gateNtk) { _gateNtk = gateNtk; }
 
       // add function
