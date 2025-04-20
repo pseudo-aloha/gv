@@ -216,8 +216,8 @@ class EcoNtk {
     void setGateByAbcNode(Abc_Obj_t* pObj, EcoGate* pEcoGate) { _abcObj2EcoGate[Abc_ObjRegular(pObj)].insert(pEcoGate); }
 
     // add function
-    void addPo(EcoGate* g) { _POList.push_back(g); }
-    void addPi(EcoGate* g) { _PIList.push_back(g); }
+    void addPo(EcoGate* g);
+    void addPi(EcoGate* g);
     void addGate(EcoGate* g) { if(!_gateName2Gate.count(g->getGateName())) _gateName2Gate[g->getGateName()] = g; GateVec.push_back(g); if(g->isPi()) addPi(g); }
     
 
@@ -243,6 +243,8 @@ class EcoNtk {
     // write the ntk as a verilog file
     void writeNtkVerilog(const string& fileName);
     
+    // cost computation
+    int computeCadContestCost();
   private:
     unordered_set<string> gateTypeStrings = {"and", "or", "nand", "nor", "not", "buf", "xor", "xnor"};
     // map that records gate name 2 gates

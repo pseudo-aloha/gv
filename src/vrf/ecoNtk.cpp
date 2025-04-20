@@ -78,6 +78,30 @@ EcoGate::~EcoGate() {
   _simVals.clear();
 }
 
+// add the given gate as the PI of the circuit
+void
+EcoNtk::addPi(EcoGate* g) {
+  // check if the gate is already in the PI list of the ntk (checked by gate name)
+  // if it already exists, we don't add it
+  for(const auto& pi : _PIList) {
+    if(pi->getGateName() == g->getGateName())
+      return;
+  }
+  _PIList.push_back(g);
+}
+
+// add the given gate as the PO of the circuit
+void 
+EcoNtk::addPo(EcoGate* g) {
+  // check if the gate is already in the PO list of the ntk (checked by gate name)
+  // if it already exists, we don't add it
+  for(const auto& po : _POList) {
+    if(po->getGateName() == g->getGateName())
+      return;
+  }
+  _POList.push_back(g);
+}
+
 // report the gate name appendded with _O/_N if they are in old or new circuit
 string
 EcoGate::getGateFullName() {
@@ -545,6 +569,8 @@ EcoNtk::writeNtkVerilog(const string& fileName) {
     for(unsigned i=0; i<getNumPos(); ++i) {
         f << getPo(i)->getGateName();
         f << ", ";
+        if((i + 1) % 10 == 0)
+          f << endl;
     }
     for(unsigned i=0; i<getNumPis(); ++i) {
         f << getPi(i)->getGateName();
@@ -599,8 +625,40 @@ EcoNtk::writeNtkVerilog(const string& fileName) {
         }
         f << ");" << endl;
     }
-    f << "endmodule" << endl;
-    f.close();gv::cir::EcoGate::setGlobalTrav();
+    f << endl << "endmodule" << endl;
+    f.close();
+}
+
+
+// compute the ntk cost based on cad contest 2021 problem A
+int
+EcoNtk::computeCadContestCost() {
+  unordered_set<string> wireNames;
+  int wireCost = 0, gateCost = 0;
+  int totalCost = 0;
+
+  for(const auto& g : GateVec) {
+    wireNames.insert(g->getGateName());
+    if(g->isPiOrConst()) continue;
+    for(unsigned i=0; i<g->getNumFanins(); ++i) {
+      auto fanin = g->getFanin(i);
+      wireNames.insert(fanin->getGateName());
+    }
+    cout << g->getGateFullName() << " incre gate cost : " << (int)g->getNumFanins() << endl;
+    gateCost += (int)g->getNumFanins() - 2;
+  }
+
+  wireCost = wireNames.size();
+  totalCost = (wireCost + gateCost);
+
+  cout << "patch cost report :" << endl;
+  cout << "wire cost : " << wireCost << endl;
+  cout << "gate cost : " << gateCost << endl;
+  cout << "-----------" << endl;
+  cout << "total cost : " << totalCost << endl;
+  cout << "-----------" << endl;
+
+  return totalCost;
 }
 
 }

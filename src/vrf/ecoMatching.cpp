@@ -27,8 +27,16 @@ EcoMgr::getGatesEqStatus(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) {
 // gate a fixed to gate b can fix fanout #i
 void
 EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir::EcoGate* fixedFanout, bool inv, unsigned fixedPo) {
-    // cout << "old gate : " << oldGate->getGateFullName() << " new gate : " << newGate->getGateFullName() << " eq status : " << getGatesEqStatus(oldGate, newGate) << endl;
-    // cout << "inv " << inv << endl;
+    // if the rp gate is merged to the old gate and the pole also matches, we don't have to add it in to rp pairs
+    if(isMerged(oldGate)) {
+        cout << "mermermer : " << oldGate->getGateFullName() << " " << newGate->getGateFullName() << endl;
+        // cout << mergedAig << 
+        auto[mergedAig, mergedPole] = getMergedAig(oldGate);
+        if(mergedAig == newGate->getAigNode() && ((mergedPole ^ newGate->getAigNodeInv()) == false)) {
+            cout << "return" << endl;
+            return;
+        }
+    }
     // if the oldgate is not yet be fixed to another gate, simply add it
     if(!_rpTable.at(fixedPo).count(oldGate)) {
         EcoRPInfo* pRPInfo = new EcoRPInfo(newGate, fixedFanout, inv);
@@ -141,8 +149,6 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
         sort(newCuts.begin(), newCuts.end(), [](gv::cir::EcoCut* a, gv::cir::EcoCut* b) {
             return a->getNumMergedLeaves() > b->getNumMergedLeaves();
         });
-
-
         
         for(auto& oldCut : oldCuts) {
             for(auto& newCut : newCuts) {
