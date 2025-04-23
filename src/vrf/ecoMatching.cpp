@@ -67,7 +67,9 @@ EcoMgr::doOutputSideMatching() {
     
     for(unsigned i=0; i<nPo; ++i) {
         matchOnePo(i);
-        // break;
+        // cout << "=======================================" << endl;
+        // cout << "i = " << i << endl;
+        // if(i == 8) assert(0);
     }
 
     // 1. build selector
@@ -95,21 +97,23 @@ void
 EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo) {
     auto oldPoCuts = _oldNtk->getGateCuts(oldGate);
     auto newPoCuts = _newNtk->getGateCuts(newGate);
-    
+    cout << "num old po cuts " << oldPoCuts.size() << " " << " num new po cuts " << newPoCuts.size() << endl;
     // sort the cuts by their NPN class
 
     // 1. collect the cuts of the same NPN class
     // here we store the key as <cutsize>_<NPN class>, for convience of sorting by cut size
     map<string, vector<gv::cir::EcoCut*>, greater<string>> oldNPNClass2Cuts;
     map<string, vector<gv::cir::EcoCut*>, greater<string>> newNPNClass2Cuts;
-
+    cout << "old cuts : " << endl;
     for(auto cut : oldPoCuts) {
+        cut->reportCut();
         auto[npnClass, match] = getNPNHash(cut);
         npnClass = to_string(cut->getCutSize()) + "_" + npnClass;
         oldNPNClass2Cuts[npnClass].push_back(cut);
     }
-
+    cout << "new cuts : " << endl;
     for(auto cut : newPoCuts) {
+        cut->reportCut();
         auto[npnClass, match] = getNPNHash(cut);
         npnClass = to_string(cut->getCutSize()) + "_" + npnClass;
         newNPNClass2Cuts[npnClass].push_back(cut);
@@ -149,15 +153,19 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
         sort(newCuts.begin(), newCuts.end(), [](gv::cir::EcoCut* a, gv::cir::EcoCut* b) {
             return a->getNumMergedLeaves() > b->getNumMergedLeaves();
         });
-        
+        cout << "old cuts size : " << oldCuts.size() << " new cuts size : " << newCuts.size() << endl;
         for(auto& oldCut : oldCuts) {
             for(auto& newCut : newCuts) {
                 oldCut->reportCut();
                 newCut->reportCut();
                 foundMatch = match2Cuts(oldCut, newCut, ithPo);
-                if(foundMatch) break;
+                if(foundMatch) {
+                    oldCut->reportCut();
+                    newCut->reportCut();
+                }
+                // if(foundMatch) break;
             }
-            if(foundMatch) break;
+            // if(foundMatch) break;
         }
     }
 }

@@ -644,7 +644,6 @@ EcoNtk::computeCadContestCost() {
       auto fanin = g->getFanin(i);
       wireNames.insert(fanin->getGateName());
     }
-    cout << g->getGateFullName() << " incre gate cost : " << (int)g->getNumFanins() << endl;
     gateCost += (int)g->getNumFanins() - 2;
   }
 

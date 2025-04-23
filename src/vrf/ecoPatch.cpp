@@ -66,7 +66,9 @@ EcoMgr::genPatch() {
     // if a gate that is reached is fixed to another gate in the new circuit, replace it with the corresponding gate
     for(unsigned i=0; i<_oldNtk->getNumPos(); ++i) {
         collectPatchGates(_oldNtk->getPo(i)->getFanin(0), nullptr, i, false);
-        break;
+        cout << "output " << _oldNtk->getPo(i)->getFanin(0)->getGateFullName() << endl;
+        // if(i>=7)
+        //     break;
     }
 
     // write the patch ntk
@@ -77,10 +79,24 @@ EcoMgr::genPatch() {
 
 void
 EcoMgr::collectPatchGates(gv::cir::EcoGate* g, gv::cir::EcoGate* curPatchGate, const unsigned& ithPo, bool isEntry) {
-    if(g->isGlobalTrav()) return;
-    g->setToGlobalTrav();
-
     gv::cir::EcoGate* patchGate;
+    if(g->isGlobalTrav()) {
+        if(g->isInNewCircuit()) {
+            if(curPatchGate) {
+                if(isMerged(g)) {
+                    // TODO : check merge gate thing
+                    auto mergedGate = *getMergedGates(g).begin();
+                    curPatchGate->addFanin(mergedGate);
+                }
+                if(_patchNtk->getGateByName(g->getGateFullName())) {
+                    patchGate = _patchNtk->getGateByName(g->getGateFullName());
+                    curPatchGate->addFanin(patchGate);
+                }
+            }
+        }
+        return;
+    }
+    g->setToGlobalTrav();
     
     // check if the gate is in old circuit to decide how we handle it
     if(g->isInOldCircuit()) {
@@ -90,7 +106,7 @@ EcoMgr::collectPatchGates(gv::cir::EcoGate* g, gv::cir::EcoGate* curPatchGate, c
             auto pEcoRpInfo = rpPairsForIthPo.at(g);
             gv::cir::EcoGate* mappedGate = pEcoRpInfo->getMappedGate();
             auto inv = pEcoRpInfo->getMappedPole();
-            cout << "fixed to another gate : " << g->getGateFullName() << endl;
+            cout << "fixed to another gate : " << g->getGateFullName() << " " << mappedGate->getGateFullName() << endl;
             // add the entry gate as the po of the patch circuit
             // TODO :  1. check if there are multiple rewire
             //         2. decide buf/inv based on the mapping pole
@@ -111,6 +127,7 @@ EcoMgr::collectPatchGates(gv::cir::EcoGate* g, gv::cir::EcoGate* curPatchGate, c
         
         // if the gate is merged, replace it by the merged gate
         if(isMerged(g)) {
+            // TODO : check merge gate thing
             auto mergedGate = *getMergedGates(g).begin();
             patchGate = new gv::cir::EcoGate("pi", mergedGate->getGateName());
             _patchNtk->addGate(patchGate);
@@ -122,9 +139,6 @@ EcoMgr::collectPatchGates(gv::cir::EcoGate* g, gv::cir::EcoGate* curPatchGate, c
             if(!_patchNtk->getGateByName(g->getGateFullName())) {
                 patchGate = new gv::cir::EcoGate(g->getGateTypeName(), g->getGateFullName());
                 _patchNtk->addGate(patchGate);
-                // if(isEntry) {
-                    
-                // }
             }
             else {
                 patchGate = _patchNtk->getGateByName(g->getGateFullName());

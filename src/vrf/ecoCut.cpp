@@ -112,7 +112,10 @@ EcoNtk::enumerateCuts(unsigned k, gv::eco::EcoMgr* pEco) {
     EcoGate::setGlobalTrav();
     // traverse from POs
     for(size_t i=0; i<getNumPos(); i++) {
+        // cout << "------------------------------" << endl;
+        // cout << "root " << getPo(i)->getGateFullName() << endl;
         enumerateCutsRec(k, getPo(i), pEco);
+        // if(getPo(i)->getGateFullName() == "parity_N") assert(0);
     }
 }
 
@@ -143,7 +146,8 @@ void
 EcoNtk::getCutCombs(unsigned faninIdx, EcoGate* root, unordered_map<EcoGate*, int>& leaves, vector<EcoCut*>& cuts, vector<vector<EcoCut*>>& faninCutVec, const unsigned& k, gv::eco::EcoMgr* pEco) {
     unsigned nFanins = faninCutVec.size();
     if(cuts.size() > EcoCut::getMaxCutsPerNode()) return; // too many cuts for a single node
-    if(faninIdx == nFanins || leaves.size() > k) {
+    // if(faninIdx == nFanins || leaves.size() > k) {
+    if(faninIdx == nFanins) {
         if(leaves.size() <= k) {
             EcoCut* cut = new EcoCut(root, leaves);
             // if(!checkCut(cut))
@@ -151,8 +155,9 @@ EcoNtk::getCutCombs(unsigned faninIdx, EcoGate* root, unordered_map<EcoGate*, in
             if(checkCut(cut) && computeAndInsertSigature(cut)) {
                 cuts.push_back(cut);
             }
-            else
+            else {
                 delete cut;
+            }
         }
         return;
     }
@@ -185,15 +190,18 @@ EcoNtk::getCutCombs(unsigned faninIdx, EcoGate* root, unordered_map<EcoGate*, in
 // enumerate k feasible cuts
 vector<EcoCut*>
 EcoNtk::enumerateCutsRec(const unsigned& k, EcoGate* g, gv::eco::EcoMgr* pEco) {
-    if(g->isGlobalTrav()) return _gate2Cuts.at(g);
+    if(g->isGlobalTrav())  {
+        // cout << "already visited," << g->getGateFullName() << " num cuts : " << _gate2Cuts.at(g).size() << endl;
+        return _gate2Cuts.at(g);
+    }
     g->setToGlobalTrav();
-    
+    // cout << "visiting " << g->getGateFullName() << endl;
     EcoCut* cut = new EcoCut(g, {g});
     _gate2Cuts[g].push_back(cut);
 
     // boundary case, return the PI gate when PI is reached
-    if(g->getGateType() == EcoGate::ECO_PI_GATE || g->getGateType() == EcoGate::ECO_CONST_0_GATE || g->getGateType() == EcoGate::ECO_CONST_1_GATE || pEco->isMerged(g))  {
-        
+    if(g->isPiOrConst() || (pEco->isMerged(g) && g->getGateType() != EcoGate::ECO_BUF_GATE && g->getGateType() != EcoGate::ECO_NOT_GATE))  {
+        // cout << "mg gate " << g->getGateFullName() << endl;
         return _gate2Cuts[g];
     }
 
@@ -202,7 +210,14 @@ EcoNtk::enumerateCutsRec(const unsigned& k, EcoGate* g, gv::eco::EcoMgr* pEco) {
     unsigned nFanins = g->getNumFanins();
     unsigned combs = 1;
     for(size_t i=0; i<nFanins; i++) {
-        auto faninCut = enumerateCutsRec(k, g->getFanin(i), pEco);
+        auto fanin = g->getFanin(i);
+        auto faninCut = enumerateCutsRec(k, fanin, pEco);
+        // cout << "fanin " << fanin->getGateFullName() << " num fanin cuts " << faninCut.size() << endl;
+        // if(fanin->getGateFullName() == "n_803_N" || fanin->getGateFullName() == "n_802_N") {
+        //     for(auto& cut : faninCut) {
+        //         cut->reportCut();
+        //     }
+        // }
         faninCutVec.push_back(faninCut);
         // sort(faninCut.begin(), faninCut.end(), [](EcoCut* a, EcoCut* b) {
         //     return a->getCutSize() < b->getCutSize();
