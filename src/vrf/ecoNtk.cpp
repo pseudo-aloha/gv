@@ -6,8 +6,10 @@
 #include <iostream>
 #include <string>
 #include <cassert>
+#include <queue>
 
 unsigned gv::cir::EcoGate::_globalTravFlag = 0;
+unordered_set<string> gv::cir::EcoNtk::gateTypeStrings = {"and", "or", "nand", "nor", "not", "buf", "xor", "xnor"};
 
 namespace gv {
 namespace cir {
@@ -45,7 +47,7 @@ EcoGate::getGateTypeName() {
   }
 }
 
-EcoGate::EcoGate(string gateType, string gateName) : ecoGateVComp(false), ecoGateV(nullptr), _pAbcNode(nullptr), _gateNtk(ECO_NONE_NTK) {
+EcoGate::EcoGate(string gateType, string gateName) : ecoGateVComp(false), ecoGateV(nullptr), _pAbcNode(nullptr), _gateNtk(ECO_NONE_NTK), _id(-1) {
   _travFlag = 0;
   _gateName = gateName;
   if(gateType == "const0")
@@ -102,6 +104,22 @@ EcoNtk::addPo(EcoGate* g) {
   _POList.push_back(g);
 }
 
+// add the given gate as a gate in EcoNtk
+void 
+EcoNtk::addGate(EcoGate* g) {
+  // add name mapping
+  if(!_gateName2Gate.count(g->getGateName()))
+    _gateName2Gate[g->getGateName()] = g;
+  
+  // push the gate
+  g->setGateId(GateVec.size());
+  GateVec.push_back(g);
+  
+  // if the gate type is pi, add it to PI list
+  if(g->isPi())
+    addPi(g);
+}
+
 // report the gate name appendded with _O/_N if they are in old or new circuit
 string
 EcoGate::getGateFullName() {
@@ -117,6 +135,12 @@ EcoGate::reportGate() {
     cout << fanin->getGateFullName() << " ";
   }
   cout << endl;
+}
+
+void
+EcoNtk::setGateName2Gate(const string& newName, const string& oldName, EcoGate* g) {
+  assert(_gateName2Gate.at(oldName) == g);
+  _gateName2Gate[newName] = g;
 }
 
 // get the eco gate by name
@@ -273,7 +297,7 @@ void
 EcoNtk::rewriteDesign(const string& dir) {
   ifstream file(dir);
     assert(file.is_open());
-    ofstream fout("/home/yenlu_mepu/gv/tmp.v");
+    ofstream fout("./tmp.v");
     string buf;
     unordered_set<string> wires;
     while (getline(file, buf))
@@ -361,8 +385,7 @@ EcoNtk::parsePrimitiveGates(const string& dir) {
         EcoGate* gate = new EcoGate(gateType, gateName);
         for(size_t i=1; i<nets.size(); i++)
           gate->_faninNames.push_back(nets.at(i));
-        _gateName2Gate[gateName] = gate;
-        GateVec.push_back(gate);
+        addGate(gate);
       }
       else if(firstTok == "assign") { // deal with assigns
         assert(items.size() >= 3);
@@ -370,8 +393,7 @@ EcoNtk::parsePrimitiveGates(const string& dir) {
         string gateName = nets.at(0);
         EcoGate* gate = new EcoGate("buf", gateName);
         gate->_faninNames.push_back(nets.at(1));
-        _gateName2Gate[gateName] = gate;
-        GateVec.push_back(gate);
+        addGate(gate);
       }
     }
   }
@@ -436,6 +458,45 @@ EcoNtk::genConnection() {
       gate->_fanins.push_back(fanin);
     }
   }
+  sortGatesInTopoOrder();
+}
+
+// sort the gates in GateVec by topological order
+void
+EcoNtk::sortGatesInTopoOrder() {
+  vector<int> inOrder(getNumGates()); // record the number of fanin of the gate
+  vector<vector<EcoGate*>> fanouts(getNumGates());
+  vector<EcoGate*> sortedGateVec;
+  queue<EcoGate*> q;
+
+  // check the fanins of each gate
+  for(unsigned i=0; i<getNumGates(); ++i) {
+    auto gate = getGate(i);
+    inOrder[i] = gate->getNumFanins();
+
+    for(unsigned j=0; j<gate->getNumFanins(); ++j) {
+      auto fanin = gate->getFanin(j);
+      fanouts[fanin->getGateId()].push_back(gate);
+    }
+
+    if(inOrder[i] == 0)
+      q.push(gate);
+  }
+
+  while(!q.empty()) {
+    auto cur = q.front();
+    q.pop();
+
+    sortedGateVec.push_back(cur);
+    for(auto fanout : fanouts.at(cur->getGateId())) {
+      inOrder.at(fanout->getGateId())--;
+      if(inOrder.at(fanout->getGateId()) == 0)
+        q.push(fanout);
+    }
+  }
+
+  // assign the sorted container back to GateVec
+  GateVec = sortedGateVec;
 }
 
 void
@@ -491,9 +552,7 @@ EcoNtk::parsePI(const string& dir) {
           vector<string> PIs = getWiresPorts(buf);
           for(const auto& PI : PIs) {
             EcoGate* gate = new EcoGate("pi", PI);
-            _PIList.push_back(gate);
-            _gateName2Gate[PI] = gate;
-            GateVec.push_back(gate);
+            addGate(gate);
           }
           while(buf[buf.size()-1] == ' ')
             buf.pop_back();
@@ -506,12 +565,10 @@ EcoNtk::parsePI(const string& dir) {
   }
   file.close();
   EcoGate* const0 = new EcoGate("const0", "1'b0");
-  _gateName2Gate["1'b0"] = const0;
-  GateVec.push_back(const0);
+  addGate(const0);
   // _PIList.push_back(const0);
   EcoGate* const1 = new EcoGate("const1", "1'b1");
-  _gateName2Gate["1'b1"] = const1;
-  GateVec.push_back(const1);
+  addGate(const1);
   // _PIList.push_back(const1);
   sort(_PIList.begin(), _PIList.end(), [](EcoGate* g1, EcoGate* g2) {
     return (g1->getGateName() < g2->getGateName());
@@ -603,13 +660,18 @@ EcoNtk::writeNtkVerilog(const string& fileName) {
     f << ";" << endl << endl;
 
     f << "wire ";
+    vector<string> wireVec;
     for(unsigned i=0; i<getNumGates(); ++i) {
+      if(getGate(i)->isConstGate()) continue;
+      wireVec.push_back(getGate(i)->getGateName());
+    }
+    for(unsigned i=0; i<wireVec.size(); ++i) {
         if((i + 1) % 10 == 0) {
             f << ";" << endl;
             f << "wire ";
         }
-        f << getGate(i)->getGateName();
-        if(i < getNumGates() - 1 && (i + 2) % 10 != 0)
+        f << wireVec.at(i);
+        if(i < wireVec.size() - 1 && (i + 2) % 10 != 0)
             f << ", ";
     }
     f << ";" << endl << endl;

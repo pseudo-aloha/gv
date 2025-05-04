@@ -2,10 +2,21 @@
 #define ECO_PATCH_CPP
 
 #include "ecoMgr.h"
+#include "proof/fraig/fraig.h"
+#include "base/abc/abc.h"
+#include "base/main/main.h"
+#include "base/main/mainInt.h"
 
 namespace gv {
 namespace eco {
-
+    extern "C"{
+        int Abc_NtkIvyProve( Abc_Ntk_t ** ppNtk, void * pPars );
+        void Abc_NtkShow( Abc_Ntk_t * pNtk, int fGateNames, int fSeq, int fUseReverse, int fKeepDot );
+        void Abc_TruthNpnTest( char * pFileName, int NpnType, int nVarNum, int fDumpRes, int fBinary, int fVerbose );
+        void Abc_NtkCecFraig( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, int nSeconds, int fVerbose );
+        void Abc_NtkCecSat( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, int nConfLimit, int nInsLimit );
+        Abc_Ntk_t * Abc_NtkMulti( Abc_Ntk_t * pNtk, int nThresh, int nFaninMax, int fCnf, int fMulti, int fSimple, int fFactor );
+      }
 // decide the output side rewire
 void
 EcoMgr::decideOutputRewire() {
@@ -56,7 +67,7 @@ EcoMgr::decideOutputRewire() {
 
 // generate the patch
 void
-EcoMgr::genPatch() {
+EcoMgr::genPatch(const string& patchName) {
     gv::cir::EcoGate::setGlobalTrav();
     // handle the rewire for output cut matching
     // decide which net should use rewire
@@ -67,14 +78,35 @@ EcoMgr::genPatch() {
     for(unsigned i=0; i<_oldNtk->getNumPos(); ++i) {
         collectPatchGates(_oldNtk->getPo(i)->getFanin(0), nullptr, i, false);
         cout << "output " << _oldNtk->getPo(i)->getFanin(0)->getGateFullName() << endl;
-        // if(i>=7)
-        //     break;
     }
+
+    unordered_set<string> patchPoNameSet;
+    for(unsigned i=0; i<_patchNtk->getNumPos(); ++i) {
+        auto patchPo = _patchNtk->getPo(i);
+        patchPoNameSet.insert(patchPo->getGateName());
+    }
+    for(unsigned i=0; i<_patchNtk->getNumPis(); ++i) {
+        auto patchGate = _patchNtk->getPi(i);
+        if(patchPoNameSet.count(patchGate->getGateName())) {
+            auto oldName = patchGate->getGateName();
+            auto newName = oldName + "_in";
+            patchGate->setGateName(newName);
+            _patchNtk->setGateName2Gate(newName, oldName, patchGate);
+        }
+    }
+
+    // sort the gates in topological order
+    _patchNtk->sortGatesInTopoOrder();
 
     // write the patch ntk
     _patchNtk->writeNtkVerilog("patch.v"); // write the patch content
     _patchNtk->computeCadContestCost();
 
+    // apply the patch to old circuit and do equivalence checking between it and the new circuit
+    if(!applyNCheckPatch(patchName))
+        cout << "patched circuit NEQ to new circuit!!!!" << endl;
+    else
+        cout << "patched circuit eq to new circuit!!!!" << endl;
 }
 
 void
@@ -160,6 +192,178 @@ EcoMgr::collectPatchGates(gv::cir::EcoGate* g, gv::cir::EcoGate* curPatchGate, c
         auto faninGate = g->getFanin(i);
         collectPatchGates(faninGate, patchGate, ithPo, false);
     }
+}
+
+// check if the two circuits are eqivalent
+// modified from Abc_NtkCecFraig
+bool
+isNtkEq(Abc_Ntk_t* pNtkOld, Abc_Ntk_t* pNtkNew) {
+//   extern int Abc_NtkIvyProve( Abc_Ntk_t ** ppNtk, void * pPars );
+
+  Prove_Params_t Params, * pParams = &Params;
+  // pParams->fVerbose = 1;
+  // build the miter
+//   assert(Abc_NtkCheck(pNtkOld));
+//   assert(Abc_NtkCheck(pNtkNew));
+  Abc_Ntk_t* pNtkMiter = Abc_NtkMiter( pNtkOld, pNtkNew, 1, 0, 0, 0 );
+//   assert(Abc_NtkCheck(pNtkMiter));
+  // handle the trivial case
+  int ret = Abc_NtkMiterIsConstant( pNtkMiter );
+  if(ret >= 0)
+    return ret;
+  Abc_Ntk_t * pCnf;
+  int nConfLimit = 0;
+  int  nInsLimit  = 0;
+  pCnf = Abc_NtkMulti( pNtkMiter, 0, 100, 1, 0, 0, 0 );
+  // ret = Abc_NtkMiterSat( pCnf, nConfLimit, nInsLimit, 0, NULL, NULL );
+  Prove_ParamsSetDefault( pParams );
+  pParams->nItersMax = 5;
+  ret = Abc_NtkIvyProve( &pNtkMiter, pParams );
+  if ( ret == -1 )
+      assert(0); // undecided after running out of resources
+  else if ( ret >= 0 )
+    return ret;
+  Abc_NtkDelete(pNtkMiter);
+}
+
+// check that after applying patch to the old circuit, old circuit will become functionally equivalent to the new circuit
+// if the equilvalence holds, return true; return false otherwise
+bool
+EcoMgr::applyNCheckPatch(const string& patchName) {
+    gv::cir::EcoNtk* patchNtk = new gv::cir::EcoNtk;
+    gv::cir::EcoNtk* patchedNtk = new gv::cir::EcoNtk;
+    unordered_map<gv::cir::EcoGate*, gv::cir::EcoGate*> gateMap;
+    unordered_set<string> patchNtkPoNameSet;
+    unordered_set<string> oldNtkPiNames;
+
+    // 1. read the patch NTK (since I don't want to assume patch is written properly)
+    patchNtk->readNtkFile(patchName);
+
+    // 3. add patch logic
+    for(unsigned i=0; i<_oldNtk->getNumPis(); ++i)
+        oldNtkPiNames.insert(_oldNtk->getPi(i)->getGateName());
+    // (a) add patch gate
+    // add gates
+    for(unsigned i=0; i<patchNtk->getNumGates(); ++i) {
+        auto patchGate = patchNtk->getGate(i);
+        auto gateTypeName = patchGate->getGateTypeName();
+        if(gateTypeName == "pi" && !oldNtkPiNames.count(patchGate->getGateName()))
+            continue;
+        gv::cir::EcoGate* patchedGate = new gv::cir::EcoGate(gateTypeName, patchGate->getGateName());
+        
+        // do the gate mapping
+        gateMap[patchGate] = patchedGate;
+        
+        // add the gate into patched gate
+        patchedNtk->addGate(patchedGate);
+
+        // add fanin names
+        for(unsigned j=0; j<patchGate->getNumFanins(); ++j) {
+            auto patchFanin = patchGate->getFanin(j);
+            patchedGate->addFaninName(patchFanin->getGateName());
+        }
+
+        // If a gate is PI, then also add it to the PI of patched circuit
+        // if(patchGate->isPi())
+        //     patchedNtk->addPi(patchedGate);
+    }
+
+    // 2. add the old circuit function
+    
+    // merged the pi's
+    unordered_map<string, gv::cir::EcoGate*> patchedNtkPiNameGateMap;
+    for(unsigned i=0; i<patchedNtk->getNumPis(); ++i) {
+        auto pi = patchedNtk->getPi(i);
+        patchedNtkPiNameGateMap[pi->getGateName()] = pi;
+    }
+    for(unsigned i=0; i<_oldNtk->getNumPis(); ++i) {
+        auto oldNtkPi = _oldNtk->getPi(i);
+        if(patchedNtkPiNameGateMap.count(oldNtkPi->getGateName()))
+            gateMap[oldNtkPi] = patchedNtkPiNameGateMap.at(oldNtkPi->getGateName());
+    }
+
+    // (a) add po's
+    for(unsigned i=0; i<_oldNtk->getNumPos(); ++i) {
+        auto oldPo = _oldNtk->getPo(i);
+        gv::cir::EcoGate* patchedPo = new gv::cir::EcoGate(oldPo->getGateTypeName(), oldPo->getGateName());
+        patchedNtk->addPo(patchedPo);
+        gateMap[oldPo] = patchedPo;
+    }
+
+    // (b) add old circuit logics and also add patched circuit pi if it is PI in the old circuit
+    
+    // collect the outputs' name of patch circuit
+    for(unsigned i=0; i<_patchNtk->getNumPos(); ++i) {
+        auto patchPo = _patchNtk->getPo(i);
+        patchNtkPoNameSet.insert(patchPo->getGateName());
+    }
+    
+    for(unsigned i=0; i<_oldNtk->getNumGates(); ++i) {
+        auto oldGate = _oldNtk->getGate(i);
+
+        if(gateMap.count(oldGate)) continue;
+        auto patchedGateName = oldGate->getGateName();
+
+        // check if the gate exists in the output of the patch circuit
+        if(patchNtkPoNameSet.count(patchedGateName))
+            patchedGateName += "_in";
+
+        gv::cir::EcoGate* patchedGate = new gv::cir::EcoGate(oldGate->getGateTypeName(), patchedGateName);
+        
+        // do the gate mapping
+        gateMap[oldGate] = patchedGate;
+        
+        // add the fanins
+        for(unsigned j=0; j<oldGate->getNumFanins(); ++j) {
+            auto oldFanin = oldGate->getFanin(j);
+            // auto mappedGate = gateMap.at(oldFanin);
+            // auto mappedGate = patchedNtk->getGateByName(oldFanin->getGateName());
+            patchedGate->addFaninName(oldFanin->getGateName());
+        }
+        
+        patchedNtk->addGate(patchedGate);
+
+        // If a gate is PI, then also add it to the PI of patched circuit
+        // if(oldGate->isPi())
+        //     patchedNtk->addPi(patchedGate);
+    }
+
+    
+
+    // 4. do euivalence checking
+    patchedNtk->genConnection();
+    patchedNtk->writeNtkVerilog("patched.v");
+
+    // patchedNtk->readNtkFile("./patched.v");
+    gv::cir::EcoNtk::rewriteDesign(getNewDesignName());
+    Abc_Ntk_t* pNtkNew = Io_Read("./tmp.v", IO_FILE_VERILOG, 0, 0 );
+    Abc_Ntk_t* pNtkPatched = Io_Read("./patched.v", IO_FILE_VERILOG, 0, 0 );
+    assert(Abc_NtkCheck(pNtkPatched));
+    assert(Abc_NtkCheck(pNtkNew));
+    pNtkNew = Abc_NtkStrash(pNtkNew, 0, 1, 0);
+    pNtkPatched = Abc_NtkStrash(pNtkPatched, 0, 1, 0);
+
+    assert(Abc_NtkCoNum(pNtkPatched) == Abc_NtkCoNum(pNtkNew));
+    bool ret = true;
+    for(int i=0; i < Abc_NtkCoNum(pNtkPatched); ++i) {
+        
+        Abc_Obj_t* pachedPo = Abc_NtkCo(pNtkPatched, i);
+        Abc_Obj_t* newPo = Abc_NtkCo(pNtkNew, i);
+        // cout << "patched po " << Abc_ObjName(pachedPo) << " new po " << Abc_ObjName(newPo) << endl;
+        Abc_Ntk_t * pNtkPatchedCone = Abc_NtkCreateCone( pNtkPatched, Abc_ObjFanin0(pachedPo), Abc_ObjName(pachedPo), 0 );
+        Abc_Ntk_t * pNtkNewCone = Abc_NtkCreateCone( pNtkNew, Abc_ObjFanin0(newPo), Abc_ObjName(newPo), 0 );
+        if ( Abc_ObjFaninC0(pachedPo) ) Abc_ObjXorFaninC( Abc_NtkPo(pNtkPatchedCone, 0), 0 );
+        if ( Abc_ObjFaninC0(newPo) ) Abc_ObjXorFaninC( Abc_NtkPo(pNtkNewCone, 0), 0 );
+        if(!isNtkEq(pNtkPatchedCone, pNtkNewCone)) {
+            cout << "patched po " << Abc_ObjName(pachedPo) << " neq to new po " << Abc_ObjName(newPo) << endl;
+            ret = false;
+        }
+    }
+    // bool ret = isNtkEq(pNtkNew, pNtkPatched);
+    // extern bool isNtkEq(Abc_Ntk_t* pNtkOld, Abc_Ntk_t* pNtkNew);
+
+    delete patchedNtk;
+    return ret;
 }
 
 }

@@ -76,6 +76,14 @@ public:
   void doFraig(); // conduct abc fraig on the designs
   void doMatching(unsigned kFeassible);
 
+  // set function
+  void setOldDesignName(const string& name) { _oldDesignName = name; }
+  void setNewDesignName(const string& name) { _newDesignName = name; }
+
+  // get function
+  string getOldDesignName() { return _oldDesignName; }
+  string getNewDesignName() { return _newDesignName; }
+
   // matching functions
   // general matching function
   void matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo = -1); // match the cuts at the gate pair
@@ -129,10 +137,10 @@ public:
   void reportRPPair();
   
   // generate patch
-  void genPatch();
+  void genPatch(const string& patchName);
   void decideOutputRewire();
   void collectPatchGates(gv::cir::EcoGate* g, gv::cir::EcoGate* curPatchGate, const unsigned& ithPo, bool isEntry);
-  bool applyNCheckPatch();
+  bool applyNCheckPatch(const string& patchName);
 
   // enum
   enum EQStatus {
@@ -146,6 +154,9 @@ private:
   // input ntks 
   gv::cir::EcoNtk* _oldNtk;
   gv::cir::EcoNtk* _newNtk;
+
+  string _oldDesignName;
+  string _newDesignName;
   
   // selector ntk things
   void buildSelector();

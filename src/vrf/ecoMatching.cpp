@@ -67,9 +67,6 @@ EcoMgr::doOutputSideMatching() {
     
     for(unsigned i=0; i<nPo; ++i) {
         matchOnePo(i);
-        // cout << "=======================================" << endl;
-        // cout << "i = " << i << endl;
-        // if(i == 8) assert(0);
     }
 
     // 1. build selector
@@ -163,9 +160,9 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
                     oldCut->reportCut();
                     newCut->reportCut();
                 }
-                // if(foundMatch) break;
+                if(foundMatch) break;
             }
-            // if(foundMatch) break;
+            if(foundMatch) break;
         }
     }
 }

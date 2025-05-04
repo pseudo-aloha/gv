@@ -12,6 +12,9 @@ void
 EcoMgr::doEco(const string& oldDesignName, const string& newDesignName) {
   _nSim = 10000;
 
+  setOldDesignName(oldDesignName);
+  setNewDesignName(newDesignName);
+
   // read designs
   readDesigns(oldDesignName, newDesignName);
 
@@ -243,7 +246,7 @@ EcoMgr::doMatching(unsigned kFeassible) {
   // }
 
   // generate patch
-  genPatch();
+  genPatch("patch.v");
 }
 
 

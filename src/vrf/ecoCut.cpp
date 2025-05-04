@@ -146,8 +146,8 @@ void
 EcoNtk::getCutCombs(unsigned faninIdx, EcoGate* root, unordered_map<EcoGate*, int>& leaves, vector<EcoCut*>& cuts, vector<vector<EcoCut*>>& faninCutVec, const unsigned& k, gv::eco::EcoMgr* pEco) {
     unsigned nFanins = faninCutVec.size();
     if(cuts.size() > EcoCut::getMaxCutsPerNode()) return; // too many cuts for a single node
-    // if(faninIdx == nFanins || leaves.size() > k) {
-    if(faninIdx == nFanins) {
+    if(faninIdx == nFanins || leaves.size() > k) {
+    // if(faninIdx == nFanins) {
         if(leaves.size() <= k) {
             EcoCut* cut = new EcoCut(root, leaves);
             // if(!checkCut(cut))

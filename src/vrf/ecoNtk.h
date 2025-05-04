@@ -36,15 +36,24 @@ namespace cir {
       friend class EcoNtk;
       EcoGate(string gateType, string gateName);
       ~EcoGate();
-      string getGateName() { return _gateName; }
+      
+      // report function
+      void reportGate();
+      
+      // get function
+      string getGateName() const { return _gateName; }
       string getGateFullName();
       string getGateTypeName();
-      unsigned getGateType() { return _gateType; }
-      unsigned getNumFanins() { return _fanins.size(); }
-      EcoGate* getFanin(unsigned i) { if(i>=_fanins.size()) return nullptr; return _fanins.at(i); }
-      void reportGate();
-      bool getAigNodeInv() { return ecoGateVComp; }
-      CirGate* getAigNode() { return ecoGateV; }
+      unsigned getGateType() const { return _gateType; }
+      unsigned getNumFanins() const { return _fanins.size(); }
+      EcoGate* getFanin(unsigned i) const { if(i>=_fanins.size()) return nullptr; return _fanins.at(i); }
+      bool getAigNodeInv() const { return ecoGateVComp; }
+      CirGate* getAigNode() const { return ecoGateV; }
+      int getGateId() const { return _id; }
+
+      // set functions
+      void setGateId(int id) { _id = id; }
+      void setGateName(const string& name) { _gateName = name; }
 
       // record the gate belongs to which ntk
       unsigned getGateNtk() { return _gateNtk; }
@@ -54,6 +63,7 @@ namespace cir {
 
       // add function
       void addFanin(EcoGate* g) { _fanins.push_back(g); }
+      void addFaninName(const string& name) { _faninNames.push_back(name); }
   
       // traversal things
       static void setGlobalTrav() { _globalTravFlag++; }
@@ -94,6 +104,7 @@ namespace cir {
     // Gate attributes
     unsigned _gateType; // store the gate type e.g. and / or / not
     string _gateName; // store the gate name (the output net name)
+    int _id;
 
     // Gate fanins
     vector<EcoGate*> _fanins;
@@ -191,15 +202,17 @@ class EcoNtk {
     // constructor
     EcoNtk () { cirV = new EcoCir(); }
     ~EcoNtk () { delete cirV; }
+    
     // file parsing functions
     void readNtkFile(const string& dir);
-    void rewriteDesign(const string& dir);
+    static void rewriteDesign(const string& dir);
     void abcReadFile();
     void parsePrimitiveGates(const string& dir);
     void parsePI(const string& dir);
     void parsePO(const string& dir);
     void parseGate(const vector<string>& line);
     void genConnection();
+    void sortGatesInTopoOrder();
 
     // cut enumeration function
     void enumerateCuts(unsigned k, gv::eco::EcoMgr* pEco); // enumerate k-feasible cuts
@@ -214,11 +227,12 @@ class EcoNtk {
 
     // set functions
     void setGateByAbcNode(Abc_Obj_t* pObj, EcoGate* pEcoGate) { _abcObj2EcoGate[Abc_ObjRegular(pObj)].insert(pEcoGate); }
-
+    void setGateName2Gate(const string& newName, const string& oldName, EcoGate* g);
+    
     // add function
     void addPo(EcoGate* g);
     void addPi(EcoGate* g);
-    void addGate(EcoGate* g) { if(!_gateName2Gate.count(g->getGateName())) _gateName2Gate[g->getGateName()] = g; GateVec.push_back(g); if(g->isPi()) addPi(g); }
+    void addGate(EcoGate* g);
     
 
     // get functions
@@ -246,7 +260,7 @@ class EcoNtk {
     // cost computation
     int computeCadContestCost();
   private:
-    unordered_set<string> gateTypeStrings = {"and", "or", "nand", "nor", "not", "buf", "xor", "xnor"};
+    static unordered_set<string> gateTypeStrings;
     // map that records gate name 2 gates
     unordered_map<string, EcoGate*> _gateName2Gate;
     unordered_map<string, EcoGate*> _poName2PoGate;
