@@ -141,10 +141,11 @@ EcoMgr::collectPatchGates(gv::cir::EcoGate* g, gv::cir::EcoGate* curPatchGate, c
             cout << "fixed to another gate : " << g->getGateFullName() << " " << mappedGate->getGateFullName() << endl;
             // add the entry gate as the po of the patch circuit
             // TODO :  1. check if there are multiple rewire
-            //         2. decide buf/inv based on the mapping pole
+            //         2. decide buf/inv based on the mapping pole (done)
             //         3. May need to check for constant case (?)
             gv::cir::EcoGate* patchPoGate = new gv::cir::EcoGate("po", g->getGateName());
-            gv::cir::EcoGate* patchRewireGate = new gv::cir::EcoGate("buf", g->getGateName());
+            string rewireGateType = inv ? "not" : "buf";
+            gv::cir::EcoGate* patchRewireGate = new gv::cir::EcoGate(rewireGateType, g->getGateName());
             patchPoGate->addFanin(patchRewireGate);
             _patchNtk->addPo(patchPoGate);
             _patchNtk->addGate(patchRewireGate);

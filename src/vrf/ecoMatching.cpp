@@ -101,16 +101,16 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
     // here we store the key as <cutsize>_<NPN class>, for convience of sorting by cut size
     map<string, vector<gv::cir::EcoCut*>, greater<string>> oldNPNClass2Cuts;
     map<string, vector<gv::cir::EcoCut*>, greater<string>> newNPNClass2Cuts;
-    cout << "old cuts : " << endl;
+    // cout << "old cuts : " << endl;
     for(auto cut : oldPoCuts) {
-        cut->reportCut();
+        // cut->reportCut();
         auto[npnClass, match] = getNPNHash(cut);
         npnClass = to_string(cut->getCutSize()) + "_" + npnClass;
         oldNPNClass2Cuts[npnClass].push_back(cut);
     }
-    cout << "new cuts : " << endl;
+    // cout << "new cuts : " << endl;
     for(auto cut : newPoCuts) {
-        cut->reportCut();
+        // cut->reportCut();
         auto[npnClass, match] = getNPNHash(cut);
         npnClass = to_string(cut->getCutSize()) + "_" + npnClass;
         newNPNClass2Cuts[npnClass].push_back(cut);
@@ -153,13 +153,11 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
         cout << "old cuts size : " << oldCuts.size() << " new cuts size : " << newCuts.size() << endl;
         for(auto& oldCut : oldCuts) {
             for(auto& newCut : newCuts) {
-                oldCut->reportCut();
-                newCut->reportCut();
                 foundMatch = match2Cuts(oldCut, newCut, ithPo);
-                if(foundMatch) {
-                    oldCut->reportCut();
-                    newCut->reportCut();
-                }
+                // if(foundMatch) {
+                //     oldCut->reportCut();
+                //     newCut->reportCut();
+                // }
                 if(foundMatch) break;
             }
             if(foundMatch) break;
@@ -321,7 +319,7 @@ EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vec
                 unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch;
                 vector<int> inputMatchIntVec;
                 inputMatchIntVec.resize(cutSize);
-
+                if(outputMatch) continue; // TODO : we only find the cuts that do not need output inv for output cut (for now), which means we do not allow invert at root (only NP cuts)
                 cout << "match " << match << endl;
                 cout << "output match : " << oldCut->getRoot()->getGateFullName() << " " << newCut->getRoot()->getGateFullName() << " inv " << outputMatch << endl;
                 // handle the free leaves
