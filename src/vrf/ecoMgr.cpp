@@ -161,12 +161,16 @@ EcoMgr::doFraig() {
     for(auto g : newGates)
       newEqClass[Abc_ObjRegular(Abc_ObjFanin0(pNode))].push_back({g, inv ^ g->getAigNodeInv()});
   }
-  cout << "Eq class" << endl;
+
+  // write the eq class in a file for debug use
+  ofstream f;
+  f.open("./.eq_class.txt", ios::out);
+  f << "Eq class" << endl;
   for(const auto&[pEqNode, oldGates] : oldEqClass) {
     if(!newEqClass.count(pEqNode)) continue;
     auto& newGates = newEqClass.at(pEqNode);
     for(const auto&[oldGate, oldGateComp] : oldGates) {
-      cout << oldGate->getGateFullName() << (oldGateComp ? "(inv)" : "(pos)") << " ";
+      f << oldGate->getGateFullName() << (oldGateComp ? "(inv)" : "(pos)") << " ";
       for(const auto&[newGate, newGateComp] : newGates) {
         if((oldGateComp ^ newGateComp) == 0) {
           _mergeTable[oldGate].insert(newGate);
@@ -179,9 +183,10 @@ EcoMgr::doFraig() {
       }
     }
     for(const auto&[newGate, newGateComp] : newGates)
-      cout << newGate->getGateFullName() << (newGateComp ? "(inv)" : "(pos)") << " ";
-    cout << endl;
+      f << newGate->getGateFullName() << (newGateComp ? "(inv)" : "(pos)") << " ";
+    f << endl;
   }
+  f.close();
 
   // merge constant and PIs
   for(size_t i=0; i<_oldNtk->getNumPis(); i++) {

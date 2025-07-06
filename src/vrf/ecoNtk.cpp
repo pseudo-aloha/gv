@@ -100,6 +100,17 @@ EcoNtk::addPo(EcoGate* g) {
   for(const auto& po : _POList) {
     if(po->getGateName() == g->getGateName())
       return;
+    assert(_poName2PoGate.count(po->getGateName()));
+  }
+  assert(_poName2PoGate.size() == _POList.size());
+  
+  if(!_poName2PoGate.count(g->getGateName())) {
+    _poName2PoGate[g->getGateName()] = g;
+  }
+  else {
+    cout << "po name " << g->getGateName() << "already exists!!!" << endl;
+    cout << "damn " << _poName2PoGate.at(g->getGateName()) << " " << g << endl;
+    assert(0);
   }
   _POList.push_back(g);
 }
@@ -108,17 +119,32 @@ EcoNtk::addPo(EcoGate* g) {
 void 
 EcoNtk::addGate(EcoGate* g) {
   // add name mapping
-  if(!_gateName2Gate.count(g->getGateName()))
+  if(_gateName2Gate.count(g->getGateName())) {
+    cout << "gate name : " << g->getGateName() << " already exists!!!" << endl;
+  }
+  assert(!_gateName2Gate.count(g->getGateName()));
     _gateName2Gate[g->getGateName()] = g;
-  
+  // if(g->getGateName() == )
+    // cout << "ff " << endl;
   // push the gate
-  g->setGateId(GateVec.size());
+  g->setGateId(getNumGates());
   GateVec.push_back(g);
   
   // if the gate type is pi, add it to PI list
   if(g->isPi())
     addPi(g);
 }
+
+void
+EcoGate::addFaninName(const string& name) {
+  assert(!isPiOrConst());
+  // if the fanin name already exists, no need to add
+  if(find(_faninNames.begin(), _faninNames.end(), name) != _faninNames.end())
+    return;
+  // add the fanin name
+  _faninNames.push_back(name);
+}
+
 
 // report the gate name appendded with _O/_N if they are in old or new circuit
 string
@@ -139,7 +165,14 @@ EcoGate::reportGate() {
 
 void
 EcoNtk::setGateName2Gate(const string& newName, const string& oldName, EcoGate* g) {
-  assert(_gateName2Gate.at(oldName) == g);
+  // cout << "bbb " << _gateName2Gate.at(oldName)->getGateFullName() << " " << g->getGateFullName() << endl;
+  // cout << "ccc " << _gateName2Gate.at(oldName) << " " << g << endl;
+  cout << "old name : " << oldName << " new name : " << newName << endl;
+  // cout << "gate type : " << g->getGateTypeName() << " " << "name type : "<< _gateName2Gate.at(oldName)->getGateTypeName() << endl;
+  // assert(0);
+  // assert(_gateName2Gate.at(oldName) == g);
+  g->setGateName(newName);
+  _gateName2Gate.erase(oldName);
   _gateName2Gate[newName] = g;
 }
 
@@ -435,8 +468,6 @@ EcoNtk::abcReadFile() {
       cirGate = cirV->getEcoCirV()->_const0; // get the const 0 gate of cirV
       ecoGate = Abc_ObjIsComplement(pNode->pCopy) ? getConst0Gate() : getConst1Gate();
       ecoGate->ecoGateVComp = Abc_ObjIsComplement(pNode->pCopy) ? false : true; // since abc's const gate is const1 and ours is const0
-      cout << "eco " << ecoGate->getGateName() << endl;
-      cout << "cirgate : " << cirGate->getTypeStr() << endl;
     }
     ecoGate->ecoGateV = cirGate;
     ecoGate->_pAbcNode = pNode->pCopy;
@@ -464,7 +495,7 @@ EcoNtk::genConnection() {
 // sort the gates in GateVec by topological order
 void
 EcoNtk::sortGatesInTopoOrder() {
-  vector<int> inOrder(getNumGates()); // record the number of fanin of the gate
+  vector<int> inOrder(getNumGates(), 0); // record the number of fanin of the gate
   vector<vector<EcoGate*>> fanouts(getNumGates());
   vector<EcoGate*> sortedGateVec;
   queue<EcoGate*> q;
@@ -479,8 +510,9 @@ EcoNtk::sortGatesInTopoOrder() {
       fanouts[fanin->getGateId()].push_back(gate);
     }
 
-    if(inOrder[i] == 0)
+    if(inOrder[i] == 0) {
       q.push(gate);
+    }
   }
 
   while(!q.empty()) {
@@ -494,6 +526,13 @@ EcoNtk::sortGatesInTopoOrder() {
         q.push(fanout);
     }
   }
+  for(unsigned i=0; i<getNumGates(); ++i) {
+    auto g = getGate(i);
+    if(inOrder[g->getGateId()] != 0) {
+      cout << g->getGateName() << " in order not 0 but " << inOrder[g->getGateId()] << " i = " << i << endl;
+    }
+  }
+  assert(GateVec.size() == sortedGateVec.size());
 
   // assign the sorted container back to GateVec
   GateVec = sortedGateVec;
@@ -625,7 +664,8 @@ EcoNtk::writeNtkVerilog(const string& fileName) {
     f << "module top(";
     for(unsigned i=0; i<getNumPos(); ++i) {
         f << getPo(i)->getGateName();
-        f << ", ";
+        if(i < getNumPos() - 1 || getNumPis() > 0)
+          f << ", ";
         if((i + 1) % 10 == 0)
           f << endl;
     }
@@ -647,17 +687,19 @@ EcoNtk::writeNtkVerilog(const string& fileName) {
     }
     f << ";" << endl << endl;
     
-    f << "input ";
-    for(unsigned i=0; i<getNumPis(); ++i) {
-      if((i + 1) % 10 == 0) {
-          f << ";" << endl;
-          f << "input ";
+    if(getNumPis() > 0) {
+      f << "input ";
+      for(unsigned i=0; i<getNumPis(); ++i) {
+        if((i + 1) % 10 == 0) {
+            f << ";" << endl;
+            f << "input ";
+        }
+        f << getPi(i)->getGateName();
+        if(i < getNumPis() - 1 && (i + 2) % 10 != 0)
+            f << ", ";
       }
-      f << getPi(i)->getGateName();
-      if(i < getNumPis() - 1 && (i + 2) % 10 != 0)
-          f << ", ";
+      f << ";" << endl << endl;
     }
-    f << ";" << endl << endl;
 
     f << "wire ";
     vector<string> wireVec;

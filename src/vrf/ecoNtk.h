@@ -34,6 +34,7 @@ namespace cir {
   class EcoGate {
     public:
       friend class EcoNtk;
+      friend class EcoMgr;
       EcoGate(string gateType, string gateName);
       ~EcoGate();
       
@@ -62,9 +63,10 @@ namespace cir {
       void setOld(unsigned gateNtk) { _gateNtk = gateNtk; }
 
       // add function
-      void addFanin(EcoGate* g) { _fanins.push_back(g); }
-      void addFaninName(const string& name) { _faninNames.push_back(name); }
-  
+      void addFanin(EcoGate* g) { assert(find(_fanins.begin(), _fanins.end(), g) == _fanins.end()); _fanins.push_back(g); }
+      void addFaninName(const string& name);
+      const vector<string>& getFaninNames() const { return _faninNames; }
+
       // traversal things
       static void setGlobalTrav() { _globalTravFlag++; }
       void setGlobalTrav(unsigned i) { _globalTravFlag += i; }

@@ -32,7 +32,7 @@ EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir:
         cout << "mermermer : " << oldGate->getGateFullName() << " " << newGate->getGateFullName() << endl;
         // cout << mergedAig << 
         auto[mergedAig, mergedPole] = getMergedAig(oldGate);
-        if(mergedAig == newGate->getAigNode() && ((mergedPole ^ newGate->getAigNodeInv()) == false)) {
+        if(mergedAig == newGate->getAigNode() && ((mergedPole ^ newGate->getAigNodeInv() ^ inv) == false)) {
             cout << "return" << endl;
             return;
         }
@@ -42,8 +42,6 @@ EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir:
         EcoRPInfo* pRPInfo = new EcoRPInfo(newGate, fixedFanout, inv);
         assert(!_rpTable.at(fixedPo).count(oldGate));
         _rpTable.at(fixedPo)[oldGate] = pRPInfo;
-        // cout << "tm " << oldGate->getGateFullName() << " " << pRPInfo->getMappedGate()->getGateFullName() << endl;
-        // assert(0);
     }
 }
 
@@ -57,6 +55,24 @@ EcoMgr::reportRPPair() {
     }
 }
 
+// check if the 2 output cone are equivalent
+bool
+EcoMgr::check2ConeEq(int ithPo) {
+    extern bool isNtkEq(Abc_Ntk_t* pNtkOld, Abc_Ntk_t* pNtkNew);
+    gv::cir::EcoNtk::rewriteDesign(getOldDesignName());
+    Abc_Ntk_t* pNtkOld = Io_Read("./tmp.v", IO_FILE_VERILOG, 0, 0 );
+    gv::cir::EcoNtk::rewriteDesign(getNewDesignName());
+    Abc_Ntk_t* pNtkNew = Io_Read("./tmp.v", IO_FILE_VERILOG, 0, 0 );
+    Abc_Obj_t* oldPo = Abc_NtkCo(pNtkOld, ithPo);
+    Abc_Obj_t* newPo = Abc_NtkCo(pNtkNew, ithPo);
+    cout << "old po name : " << Abc_ObjName(oldPo) << endl;
+    Abc_Ntk_t * pNtkOldCone = Abc_NtkCreateCone( pNtkOld, Abc_ObjFanin0(oldPo), Abc_ObjName(oldPo), 1 );
+    Abc_Ntk_t * pNtkNewCone = Abc_NtkCreateCone( pNtkNew, Abc_ObjFanin0(newPo), Abc_ObjName(newPo), 1 );
+    if ( Abc_ObjFaninC0(oldPo) ) Abc_ObjXorFaninC( Abc_NtkPo(pNtkOldCone, 0), 0 );
+    if ( Abc_ObjFaninC0(newPo) ) Abc_ObjXorFaninC( Abc_NtkPo(pNtkNewCone, 0), 0 );
+    
+    return isNtkEq(pNtkOldCone, pNtkNewCone);
+}
 
 
 // do the cut matching from output side
@@ -66,6 +82,8 @@ EcoMgr::doOutputSideMatching() {
     _rpTable.resize(nPo);
     
     for(unsigned i=0; i<nPo; ++i) {
+        cout << "matching po : " << _oldNtk->getPo(i)->getGateName() << endl;
+        if(check2ConeEq(i)) continue;
         matchOnePo(i);
     }
 
@@ -633,7 +651,7 @@ EcoMgr::getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut) {
 // only applies on single input gates (i.e. buf/inv)
 // check if the two gates are of the same pole
 bool isSamePole(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) {
-    if(oldGate->getNumFanins() == 1 && newGate->getNumFanins() == 1) return false; // make sure that the gates are all single fanin gate
+    // if(oldGate->getNumFanins() == 1 && newGate->getNumFanins() == 1) return false; // make sure that the gates are all single fanin gate
     
     // get the gate type enum of both of the gates
     unsigned oldGateType = oldGate->getGateType();
@@ -739,6 +757,7 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
     auto[outputMatch, inputMatch] = _pNpnHash->decodeEncodedSizeTMatch(candMatch, oldCut->getCutSize());
     unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> candRPPair;
     cout << "output match : " << outputMatch << endl;
+    if(outputMatch) return false; // we don't want invert at po
     for(int i=0; i<inputMatch.size(); ++i) {
         auto oldGate = oldLeaves.at(i);
         auto newGate = newLeaves.at(inputMatch[i] / 2);
@@ -746,26 +765,29 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
         // if the rp pair are both driven by a chain of buf/inv, try to find the root
         bool isOldGateInvBuf = (oldGate->getGateType() == gv::cir::EcoGate::ECO_BUF_GATE || oldGate->getGateType() == gv::cir::EcoGate::ECO_NOT_GATE);
         bool isNewGateInvBuf = (newGate->getGateType() == gv::cir::EcoGate::ECO_BUF_GATE || newGate->getGateType() == gv::cir::EcoGate::ECO_NOT_GATE);
-        
-        while(isOldGateInvBuf && isNewGateInvBuf) {
-            cout << "oldgate type : " << oldGate->getGateTypeName() << " newgate type : " << newGate->getGateTypeName() << endl;
-            cout << "num fanins : " << oldGate->getNumFanins() << " " << newGate->getNumFanins() << endl;
-            if(isSamePole(oldGate, newGate)) {
-                while(isSamePole(oldGate, newGate)) {
-                    oldGate = oldGate->getFanin(0);
-                    newGate = newGate->getFanin(0);
-                }
-            }
-            else {
-                oldGate = oldGate->getFanin(0);
-                newGate = newGate->getFanin(0);
-            }
-            
-            isOldGateInvBuf = (oldGate->getGateType() == gv::cir::EcoGate::ECO_BUF_GATE || oldGate->getGateType() == gv::cir::EcoGate::ECO_NOT_GATE);
-            isNewGateInvBuf = (newGate->getGateType() == gv::cir::EcoGate::ECO_BUF_GATE || newGate->getGateType() == gv::cir::EcoGate::ECO_NOT_GATE);
-        }
-
         bool inv = inputMatch[i] % 2;
+
+        // while(isOldGateInvBuf && isNewGateInvBuf) {
+        //     assert(oldGate->getNumFanins() == 1 && newGate->getNumFanins() == 1);
+        //     cout << "oldgate type : " << oldGate->getGateTypeName() << " newgate type : " << newGate->getGateTypeName() << endl;
+        //     cout << "num fanins : " << oldGate->getNumFanins() << " " << newGate->getNumFanins() << endl;
+        //     if(isSamePole(oldGate, newGate)) {
+        //         while(isSamePole(oldGate, newGate)) {
+        //             oldGate = oldGate->getFanin(0);
+        //             newGate = newGate->getFanin(0);
+        //         }
+        //     }
+        //     else {
+        //         inv ^= true;
+        //         oldGate = oldGate->getFanin(0);
+        //         newGate = newGate->getFanin(0);
+        //         // break;
+        //     }
+            
+        //     isOldGateInvBuf = (oldGate->getGateType() == gv::cir::EcoGate::ECO_BUF_GATE || oldGate->getGateType() == gv::cir::EcoGate::ECO_NOT_GATE);
+        //     isNewGateInvBuf = (newGate->getGateType() == gv::cir::EcoGate::ECO_BUF_GATE || newGate->getGateType() == gv::cir::EcoGate::ECO_NOT_GATE);
+        // }
+
         candRPPair[oldGate] = {newGate, inv};
         cout << "fanin match : " << oldGate->getGateFullName() << " " << newGate->getGateFullName() << " " << inv << endl;
         
@@ -787,7 +809,7 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
         // cout << "old gate : " << oldGate->getGateFullName() << endl;
         // oldCut->reportCut();
         for(auto[g, fo] : fixedFanout) {
-            cout << "gate " << g->getGateFullName() << " fixed fanout " << fo->getGateFullName() << " " << inv << endl;
+            cout << "gate " << g->getGateFullName() << " fixed to " << newGate->getGateFullName() << " fixed fanout " << fo->getGateFullName() << " " << inv << endl;
         }
 
         addRPPair(oldGate, newGate, fixedFanout.at(oldGate), inv, ithPo);

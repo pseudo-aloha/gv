@@ -64,7 +64,7 @@ private:
 class EcoMgr {
 public:
   // constructor
-  EcoMgr () { _oldNtk = new gv::cir::EcoNtk;
+  EcoMgr () : _patchWireCount(0) { _oldNtk = new gv::cir::EcoNtk;
               _newNtk = new gv::cir::EcoNtk;
               _patchNtk = new gv::cir::EcoNtk;
               _selectorNtk = new gv::cir::EcoNtk; }
@@ -100,6 +100,7 @@ public:
 
   // output side matching functions
   void doOutputSideMatching();
+  bool check2ConeEq(int ithPo);
   void matchOnePo(unsigned ithPo);
 
   // input side prepatch functions
@@ -111,6 +112,7 @@ public:
   void setInvMergedGate(gv::cir::EcoGate* g, gv::cir::EcoGate* mg) { _invMergeTable[g].insert(mg); }
   unordered_set<gv::cir::EcoGate*> getMergedGates(gv::cir::EcoGate* g) { if(!_mergeTable.count(g)) return {}; return _mergeTable.at(g); }
   unordered_set<gv::cir::EcoGate*> getInvMergedGates(gv::cir::EcoGate* g) { if(!_invMergeTable.count(g)) return {}; return _invMergeTable.at(g); }
+  pair<gv::cir::EcoGate*, bool> getOneMergedGate(gv::cir::EcoGate* g, bool pole); // the first arguement is the gate we want to find merged gate, the second arguement is the preferred pole of the gate.
   bool isMerged(gv::cir::EcoGate* g) { return (_mergeTable.count(g) || _invMergeTable.count(g)); }
   unsigned getGatesEqStatus(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate);
 
@@ -139,8 +141,15 @@ public:
   // generate patch
   void genPatch(const string& patchName);
   void decideOutputRewire();
-  void collectPatchGates(gv::cir::EcoGate* g, gv::cir::EcoGate* curPatchGate, const unsigned& ithPo, bool isEntry);
+  void generateFinalRpRewire(unordered_set<gv::cir::EcoGate*>& usedNewGate);
+  void generatePatchForIthPo(unsigned i);
+  void generateNewGateLogics(unordered_set<gv::cir::EcoGate*>& usedNewGate);
   bool applyNCheckPatch(const string& patchName);
+  void addPatchPoName(const string& name) { _patchPoNames.insert(name); }
+  bool isInPatchPoNames(const string& name) const { return _patchPoNames.count(name); }
+  string getPatchGateName(gv::cir::EcoGate* g); //decide whether the old gate in the patch needs to add _in suffix
+  string getPatchWireName() { return "eco_wire_" + to_string(_patchWireCount++); }
+  gv::cir::EcoGate* createOrGetPatchGate(const string& gateTypeName, const string& gateName);
 
   // enum
   enum EQStatus {
@@ -169,6 +178,8 @@ private:
 
   // patch ntk
   gv::cir::EcoNtk* _patchNtk;
+  unsigned _patchWireCount;
+  unordered_set<string> _patchPoNames;
 
   // record the merge information
   unordered_map<gv::cir::EcoGate*, unordered_set<gv::cir::EcoGate*>> _mergeTable;
@@ -186,6 +197,7 @@ private:
 
   // record the RP pair
   vector<unordered_map<gv::cir::EcoGate*, EcoRPInfo*>> _rpTable; // record the ith circuit in old gate matched to jth gate in new circuit and also record the pole
+  unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> _finalRpPair;
 
   // record how many patterns has been simmed
   unsigned _nSim;
