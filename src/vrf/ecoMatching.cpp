@@ -357,6 +357,7 @@ EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vec
                     bool inv = getIthBit(invAssignSizeT, j);
                     inputMatch[oldLeaves.at(comb.at(j))] = {newLeaves.at(j), inv};
                     inputMatchIntVec[comb.at(j)] = j * 2 + inv;
+                    assert(inputMatchIntVec[comb.at(j)] < cutSize);
                     cout << oldLeaves.at(comb.at(j))->getGateFullName() << " " << newLeaves.at(j)->getGateFullName() << " inv " << inv << endl; 
                 }
                 assert(checkMatchValid(oldCut, newCut, outputMatch, inputMatch));
@@ -644,7 +645,11 @@ EcoMgr::getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut) {
             
         }
     }
-
+    for(unsigned i=0; i<ret.size(); ++i) {
+        auto[outputMatch, inputMatch] = _pNpnHash->decodeEncodedSizeTMatch(ret[i], cutSize);
+        for(unsigned j=0; j<cutSize; ++j)
+            assert(inputMatch.at(j) < 14);
+    }
     return ret;
 }
 
@@ -730,7 +735,7 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
         }
     }
 
-    size_t candMatch;
+    size_t candMatch = 0;
     int bestScore = -1; // number of matched
     for(unsigned i=0; i<matchWays.size(); ++i) {
         int score = 0;
@@ -751,13 +756,16 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
             candMatch = matchWays.at(i);
         }
     }
+
+    // if no valid match is found, return false
+    if(!candMatch) return false;
     
     
     // find a match way that can maximally match the merged gates
     auto[outputMatch, inputMatch] = _pNpnHash->decodeEncodedSizeTMatch(candMatch, oldCut->getCutSize());
     unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> candRPPair;
     cout << "output match : " << outputMatch << endl;
-    if(outputMatch) return false; // we don't want invert at po
+    if(outputMatch) return false; // we don't want invert at po, TODO : check if we have to change to NPN
     for(int i=0; i<inputMatch.size(); ++i) {
         auto oldGate = oldLeaves.at(i);
         auto newGate = newLeaves.at(inputMatch[i] / 2);

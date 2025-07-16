@@ -45,6 +45,52 @@ EcoMgr::getOneMergedGate(gv::cir::EcoGate* g, bool pole) {
     }
 }
 
+// Used to name the dup gate
+// It will count how many times did the gate duplicated and name the dup gate accrodingly
+string
+EcoMgr::getDupGateName(gv::cir::EcoGate* g, unsigned ithPo) {
+    assert(g->isInOldCircuit()); //make sure that the gate is in the old circuit, since we only want to duplicate the gates in the old circuit
+    string dupGateName;
+
+    auto rpForIthPo = _rpTable.at(ithPo);
+    if(rpForIthPo.count(g)) {
+        auto pEcoRpInfo = rpForIthPo.at(g);
+        auto mappedGate = pEcoRpInfo->getMappedGate();
+        auto mappedPole = pEcoRpInfo->getMappedPole();
+        if(mappedPole) {
+            gv::cir::EcoGate* invGate = createOrGetPatchGate("not", mappedGate->getGateFullName() + "_inv");
+            invGate->addFaninName(mappedGate->getGateFullName());
+            return invGate->getGateName();
+        }
+        return mappedGate->getGateFullName();
+    }
+    if(isMerged(g)) {
+        auto[mergedGate, mergedPole] = getOneMergedGate(g, false);
+        if(getDupedMergedGate(g)) {
+            auto dupedMergedGate = getDupedMergedGate(g);
+
+            dupGateName = dupedMergedGate->getGateName();
+        }
+        else {
+            _usedNewGate.insert(mergedGate);
+            dupGateName = mergedGate->getGateFullName();
+        }
+        if(mergedPole) {
+            gv::cir::EcoGate* invGate = createOrGetPatchGate("not", dupGateName + "_inv");
+            invGate->addFaninName(dupGateName);
+            return invGate->getGateName();
+        }
+        return dupGateName;
+    }
+    if(g->isPiOrConst())
+        return g->getGateName();
+    // name the gate according to the count
+    dupGateName = g->getGateName();
+    dupGateName += "_for_po_" + _oldNtk->getPo(ithPo)->getGateName();
+
+    return dupGateName;
+}
+
 // decide the output side rewire
 void
 EcoMgr::decideOutputRewire() {
@@ -124,14 +170,16 @@ EcoMgr::decideOutputRewire() {
             if(visited.count(cur)) continue;
             visited.insert(cur);
             
+            // if(cur != _oldNtk->getPo(i)->getFanin(0)) {
+                // cout << "freeze2 : " << cur->getGateFullName() << endl;
+            frozenGates.insert(cur);
+            _oldGateUsedByPo[cur].push_back(i);
+            // }
             
-
+            // reached the rp point
             if(rpForIthPo.count(cur)) continue;
             
-            if(cur != _oldNtk->getPo(i)->getFanin(0)) {
-                // cout << "freeze2 : " << cur->getGateFullName() << endl;
-                frozenGates.insert(cur);
-            }
+            
 
             for(unsigned j=0; j<cur->getNumFanins(); ++j) {
                 auto fanin = cur->getFanin(j);
@@ -184,7 +232,6 @@ EcoMgr::decideOutputRewire() {
         f << oldGate->getGateFullName() << " " << (mappedPole ? "~" : "") << mappedGate->getGateFullName() << endl;
     }
     f.close();
-
 }
 
 // generate the patch
@@ -194,20 +241,19 @@ EcoMgr::genPatch(const string& patchName) {
     // handle the rewire for output cut matching
     // decide which net should use rewire
     decideOutputRewire();
+
+    // handle the input side merging gate dup
+    dupMergedGates();
     
-    // record the used new gate, will generate the logic later
-    unordered_set<gv::cir::EcoGate*> usedNewGate;
     // rewire the final rp
-    generateFinalRpRewire(usedNewGate);
+    generateFinalRpRewire();
 
     // For each po, write the rewire info (to fix the net in the old circuit to the net in the new circuit)
     // this part takes care the gate logic duplication
     for(unsigned i=0; i<_oldNtk->getNumPos(); ++i) {
-        cout << "output " << _oldNtk->getPo(i)->getFanin(0)->getGateFullName() << endl;
-        // traverse the gates in the old circuit
         generatePatchForIthPo(i);
     }
-    generateNewGateLogics(usedNewGate);
+    generateNewGateLogics();
 
     // generate the connections for the patch gate
     _patchNtk->genConnection();
@@ -223,12 +269,84 @@ EcoMgr::genPatch(const string& patchName) {
         cout << "patched circuit eq to new circuit!!!!" << endl;
 }
 
+// for the merged gates whose function has been changed, we have to duplicate their function
+// the duplicated function is recorded in a map, so we can get the duplicated gate from its original gate
+void
+EcoMgr::dupMergedGates() {
+    // find the merged gates that need to be duplicated
+    
+    unordered_set<gv::cir::EcoGate*> gatesNeedToDup;
+    
+    for(unsigned i=0; i<_oldNtk->getNumGates(); ++i) {
+        auto g = _oldNtk->getGate(i);
+        if(_finalRpPair.count(g)) {
+            gatesNeedToDup.insert(g);
+            continue;
+        }
+        queue<gv::cir::EcoGate*> q;
+        gv::cir::EcoGate::setGlobalTrav();
+        q.push(g);
+
+        while(!q.empty()) {
+            auto cur = q.front();
+            q.pop();
+            if(cur->isGlobalTrav()) continue;
+            cur->setToGlobalTrav();
+
+            if(gatesNeedToDup.count(cur)) {
+                gatesNeedToDup.insert(g);
+                break;
+            }
+
+            // traverse its children
+            for(unsigned i=0; i<cur->getNumFanins(); ++i) {
+                auto fanin = cur->getFanin(i);
+                if(!fanin->isGlobalTrav())
+                    q.push(fanin);
+            }
+        
+        }
+    }
+
+
+
+    // traverse the gates in topological order and collect the gates that needs to be duplicated
+    for(unsigned i=0; i<_oldNtk->getNumGates(); ++i) {
+        auto g = _oldNtk->getGate(i);
+        // if the gate is merged and its function has been changed, we need to duplicate its function
+        if(gatesNeedToDup.count(g)) {
+            auto gateName = g->getGateName() + "_dup";
+            gv::cir::EcoGate* dupedGate = createOrGetPatchGate(g->getGateTypeName(), gateName);
+            addDupedMergedGate(g, dupedGate);
+            // add its fanin
+            for(unsigned j=0; j<g->getNumFanins(); ++j) {
+                auto fanin = g->getFanin(j);
+                if(getDupedMergedGate(fanin)) {
+                    
+                    auto dupedMergedGate = getDupedMergedGate(fanin);
+                    dupedGate->addFaninName(dupedMergedGate->getGateName());
+                    gv::cir::EcoGate* patchFaninGate = createOrGetPatchGate(dupedMergedGate->getGateTypeName(), dupedMergedGate->getGateName());
+                }
+                else {
+                    dupedGate->addFaninName(fanin->getGateName());
+                    gv::cir::EcoGate* patchFaninGate = createOrGetPatchGate("pi", fanin->getGateName());
+                }
+            }
+        }
+    }
+}
+
 string
 EcoMgr::getPatchGateName(gv::cir::EcoGate* g) {
     assert(g->isInNewCircuit());
     if(isMerged(g)) {
         auto[mergedGate, pole] = getOneMergedGate(g, false);
+        assert(mergedGate->isInOldCircuit());
         string gateName = mergedGate->getGateName();
+        
+        if(getDupedMergedGate(mergedGate)) {
+            gateName = getDupedMergedGate(mergedGate)->getGateName();
+        }
         if(isInPatchPoNames(gateName)) gateName += "_in";
         if(pole) gateName += "_inv"; // add _inv suffix
 
@@ -241,7 +359,7 @@ EcoMgr::getPatchGateName(gv::cir::EcoGate* g) {
 
 // write the rewiring for the final selection of rp pairs
 void
-EcoMgr::generateFinalRpRewire(unordered_set<gv::cir::EcoGate*>& usedNewGate) {
+EcoMgr::generateFinalRpRewire() {
     for(auto[oldGate, mappedGateInfo] : _finalRpPair) {
         auto mappedGate = mappedGateInfo.first;
         auto inv = mappedGateInfo.second;
@@ -260,24 +378,23 @@ EcoMgr::generateFinalRpRewire(unordered_set<gv::cir::EcoGate*>& usedNewGate) {
         // gv::cir::EcoGate* fanin = createOrGetPatchGate(mappedGate->getGateTypeName(), mappedGate->getGateFullName());
         // g->addFanin(fanin);
         
-        usedNewGate.insert(mappedGate);
+        _usedNewGate.insert(mappedGate);
     }
 }
 
 // generate the new gates' logic in the patch circuit
 void
-EcoMgr::generateNewGateLogics(unordered_set<gv::cir::EcoGate*>& usedNewGate) {
+EcoMgr::generateNewGateLogics() {
     // Use BFS to generate the logics
     queue<gv::cir::EcoGate*> q;
     gv::cir::EcoGate::setGlobalTrav();
     
-    for(const auto& g : usedNewGate)
+    for(const auto& g : _usedNewGate)
         q.push(g);
     
     while(!q.empty()) {
         auto cur = q.front();
         q.pop();
-        
         if(cur->isGlobalTrav()) continue;
         cur->setToGlobalTrav();
         
@@ -295,6 +412,7 @@ EcoMgr::generateNewGateLogics(unordered_set<gv::cir::EcoGate*>& usedNewGate) {
             auto[mergedGate, pole] = getOneMergedGate(cur, false);
             string mergedPatchGateName = getPatchGateName(cur);
             string mergedPatchGateTypeStr = (pole ? "not" : "pi");
+
             gv::cir::EcoGate* mergedPatchGate = createOrGetPatchGate(mergedPatchGateTypeStr, mergedPatchGateName);
             patchGate = createOrGetPatchGate("buf", cur->getGateFullName());
             patchGate->addFaninName(mergedPatchGateName);
@@ -302,6 +420,7 @@ EcoMgr::generateNewGateLogics(unordered_set<gv::cir::EcoGate*>& usedNewGate) {
             // if the gate is in inverted pole, we need add the original gate to the inverter
             if(pole) {
                 string faninGateName = mergedGate->getGateName();
+                assert(mergedGate->isInOldCircuit());
                 if(isInPatchPoNames(faninGateName)) faninGateName += "_in";
                 gv::cir::EcoGate* patchFaninGate = createOrGetPatchGate("pi", faninGateName);
                 mergedPatchGate->addFaninName(faninGateName);
@@ -321,35 +440,28 @@ EcoMgr::generateNewGateLogics(unordered_set<gv::cir::EcoGate*>& usedNewGate) {
     }
 }
 
-// generate the patch logic for ith po, except the ones that are defined in final rp
-// this is used to generate the duplicated circuit part
-void
-EcoMgr::generatePatchForIthPo(unsigned i) {
-    auto rpForIthPo = _rpTable.at(i);
-    const string poSuffix = "_po" + to_string(i);
-    // add the rewire things
-    for(auto[oldGate, pEcoRpInfo] : rpForIthPo) {
-        auto mappedGate = pEcoRpInfo->getMappedGate();
-        auto inv = pEcoRpInfo->getMappedPole();
-
-        // if the rewire is handled by our final decision, no need to rewire again
-        if(inv == _finalRpPair.at(oldGate).second && mappedGate == _finalRpPair.at(oldGate).first) continue;
-        cout << "old gate " << oldGate->getGateFullName() << endl;
-        cout << "is fixed to " << (inv ? "~" : "") << mappedGate->getGateFullName() << endl;
-        
-        // create rewiring gate
-        string gateTypeName = (inv ? "not" : "buf");
-        string gateName = oldGate->getGateName();
-        gv::cir::EcoGate* g = createOrGetPatchGate(gateTypeName, gateName);
-
-        gv::cir::EcoGate* fanin = createOrGetPatchGate(mappedGate->getGateTypeName(), mappedGate->getGateFullName() + poSuffix);
-        g->addFanin(fanin);
+// check if the current gate needs to be duplicated
+bool
+EcoMgr::checkIfHasToDup(gv::cir::EcoGate* g, unsigned ithPo) {
+    auto rpForIthPo = _rpTable.at(ithPo);
+    for(unsigned j = 0; j < g->getNumFanins(); ++j) {
+        auto fanin = g->getFanin(j);
+        // if the fanin is changed by other rp point, dup the gate and rewire it to connect to the patch output
+        if(_finalRpPair.count(fanin) && !rpForIthPo.count(fanin))
+            return true;
     }
+    return false;
+}
 
-    // duplicate the output side gates
+// We need to find the POs that are not fix by the final set of RP pairs we chose
+bool
+EcoMgr::checkIfHasToFixPo(unsigned ithPo) {
+    auto rpForIthPo = _rpTable.at(ithPo);
+    // if the 2 po are eq itself, no need to fix
+    // if(check2ConeEq(ithPo)) return false;
     queue<gv::cir::EcoGate*> q;
     unordered_set<gv::cir::EcoGate*> visited;
-    q.push(_oldNtk->getPo(i)->getFanin(0));
+    q.push(_oldNtk->getPo(ithPo)->getFanin(0));
     while(!q.empty()) {
         auto cur = q.front();
         q.pop();
@@ -357,24 +469,169 @@ EcoMgr::generatePatchForIthPo(unsigned i) {
         // mark visited
         if(visited.count(cur)) continue;
         visited.insert(cur);
-        
-        // this means that the output frontier is reached, no need to further duplicate the gates
-        if(rpForIthPo.count(cur)) continue;
 
-        // add its fanins
-        bool dupGate = false;
-        for(unsigned j=0; j<cur->getNumFanins(); ++j) {
+        if(checkIfHasToDup(cur, ithPo))
+            return true;
+        if(rpForIthPo.count(cur) || cur->isPiOrConst()) continue;
+
+        // traverse its fanins
+        for(unsigned j = 0; j < cur->getNumFanins(); ++j) {
             auto fanin = cur->getFanin(j);
-            // if the fanin is changed by other rp point, dup the gate
-            if(_finalRpPair.count(fanin) && !rpForIthPo.count(fanin))
-                dupGate = true;
             if(!visited.count(fanin))
                 q.push(fanin);
         }
-        if(dupGate) {
-            
+    }
+
+    return false;
+}
+
+
+// generate the patch logic for ith po, except the ones that are defined in final rp
+// this is used to generate the duplicated circuit part
+void
+EcoMgr::generatePatchForIthPo(unsigned i) {
+    auto rpForIthPo = _rpTable.at(i);
+
+    // fix from the po
+    if(!checkIfHasToFixPo(i))
+        return;
+
+    // Dup the gate from the output side
+    auto oldPoGate = _oldNtk->getPo(i);
+    auto newPoGate = _newNtk->getPo(i);
+
+    auto oldPoFaninGate = oldPoGate->getFanin(0);
+    auto newPoFaninGate = newPoGate->getFanin(0);
+    auto rewireBuf = createOrGetPatchGate("buf", oldPoFaninGate->getGateName());
+    auto patchPoGate = createOrGetPatchGate("po", oldPoGate->getGateName());
+    
+
+    // dup until rp point
+    gv::cir::EcoGate::setGlobalTrav();
+    queue<gv::cir::EcoGate*> q;
+    q.push(_oldNtk->getPo(i)->getFanin(0));
+    string dupGateName = getDupGateName(_oldNtk->getPo(i)->getFanin(0), i);
+    rewireBuf->addFaninName(dupGateName);
+
+    while(!q.empty()) {
+        auto cur = q.front();
+        q.pop();
+
+        // check if the gate has been traversed
+        if(cur->isGlobalTrav()) continue;
+        cur->setToGlobalTrav();
+
+        
+        if(isMerged(cur)) return;
+        if(rpForIthPo.count(cur)) return;
+
+        // dup the gate for this po
+        string dupGateName = getDupGateName(cur, i);
+        auto dupGate = createOrGetPatchGate(cur->getGateTypeName(), dupGateName);
+        
+        
+
+        for(unsigned j=0; j<cur->getNumFanins(); ++j) {
+            auto fanin = cur->getFanin(j);
+            string dupFaninGateName = getDupGateName(fanin, i);
+            dupGate->addFaninName(dupFaninGateName);
+        }
+
+        // traverse its fanins
+        for(unsigned j = 0; j < cur->getNumFanins(); ++j) {
+            auto fanin = cur->getFanin(j);
+            if(!fanin->isGlobalTrav())
+                q.push(fanin);
         }
     }
+
+    // Find the gates that is solely used by this particular po
+
+    // cout << "po " << _oldNtk->getPo(i)->getGateName() << " needs additional dup!!!" << endl;
+    
+
+    // // fix the po of the old circuit to the corresponding po of the new circuit
+    // // cout << "rewire for po " << oldPoGate->getGateName() << " " << newPoGate->getGateFullName()  << endl;
+    // auto rewireBuf = createOrGetPatchGate("buf", oldPoFaninGate->getGateName());
+    // rewireBuf->addFaninName(newPoFaninGate->getGateFullName());
+    // _usedNewGate.insert(newPoFaninGate);
+    // auto patchPoGate = createOrGetPatchGate("po", oldPoGate->getGateName());
+
+    // const string poSuffix = "_po" + to_string(i);
+    // // add the rewire things
+    // for(auto[oldGate, pEcoRpInfo] : rpForIthPo) {
+    //     auto mappedGate = pEcoRpInfo->getMappedGate();
+    //     auto inv = pEcoRpInfo->getMappedPole();
+
+    //     // if the rewire is handled by our final decision, no need to rewire again
+    //     if(inv == _finalRpPair.at(oldGate).second && mappedGate == _finalRpPair.at(oldGate).first) continue;
+    //     cout << "old gate " << oldGate->getGateFullName() << endl;
+    //     cout << "is fixed to " << (inv ? "~" : "") << mappedGate->getGateFullName() << endl;
+        
+    //     // create rewiring gate
+    //     string gateTypeName = (inv ? "not" : "buf");
+    //     string gateName = oldGate->getGateName();
+    //     gv::cir::EcoGate* g = createOrGetPatchGate(gateTypeName, gateName);
+
+    //     gv::cir::EcoGate* fanin = createOrGetPatchGate(mappedGate->getGateTypeName(), mappedGate->getGateFullName() + poSuffix);
+    //     g->addFanin(fanin);
+    // }
+
+    // duplicate the output side gates
+    // bool dupGate = false; // After this flag is turning to true, all the gates below it has to be duplicated
+    // queue<gv::cir::EcoGate*> q;
+    // unordered_set<gv::cir::EcoGate*> visited;
+    // q.push(_oldNtk->getPo(i)->getFanin(0));
+    // while(!q.empty()) {
+    //     auto cur = q.front();
+    //     q.pop();
+        
+    //     // mark visited
+    //     if(visited.count(cur)) continue;
+    //     visited.insert(cur);
+        
+    //     // this means that the output frontier is reached, no need to further duplicate the gates
+    //     // but need to create the pi gate
+    //     if(rpForIthPo.count(cur) || cur->isPiOrConst()) {
+    //         // cout << "name " << getDupGateName(cur, i) << endl;
+    //         if(cur->isPiOrConst())
+    //             auto dupPi = createOrGetPatchGate("pi", getDupGateName(cur, i));
+    //         cout << "Ccc " << getDupGateName(cur, i) << endl;
+    //         // assert(_patchNtk->getGateByName(dupPi->getGateName()) != nullptr);
+    //         if(isMerged(cur)) cout << "mg!!!" << endl;
+    //         if(rpForIthPo.count(cur)) cout << "rewired!!!" << endl;
+    //         continue;
+    //     }
+
+    //     // traverse its fanins
+    //     for(unsigned j = 0; j < cur->getNumFanins(); ++j) {
+    //         auto fanin = cur->getFanin(j);
+    //         if(!visited.count(fanin))
+    //             q.push(fanin);
+    //     }
+
+    //     // create the the po for the dup patch part
+    //     if(!dupGate && checkIfHasToDup(cur, i)) {
+    //         dupGate = true;
+    //         string dupGateName = getDupGateName(cur, i);
+    //         auto dupPo = createOrGetPatchGate("po", cur->getGateName());
+    //         auto dupRewireBuf = createOrGetPatchGate("buf", cur->getGateName());
+    //         dupPo->addFaninName(cur->getGateName());
+    //         dupRewireBuf->addFaninName(dupGateName);
+    //     }
+
+    //     // dup the gate if needed
+    //     if(dupGate) {
+    //         string dupGateName = getDupGateName(cur, i);
+    //         auto dupGate = createOrGetPatchGate(cur->getGateTypeName(), dupGateName);
+    //         cout << "creating dup gate " << dupGateName << endl;
+    //         for(unsigned j=0; j<cur->getNumFanins(); ++j) {
+    //             auto fanin = cur->getFanin(j);
+    //             string dupFaninGateName = getDupGateName(fanin, i);
+    //             dupGate->addFaninName(dupFaninGateName);
+    //         }
+    //     }
+    // }
 
 }
 
@@ -412,6 +669,7 @@ EcoMgr::createOrGetPatchGate(const string& gateTypeName, const string& gateName)
                     if(name.substr(name.size()-3, 3) == "_in") {
                         cout << "yabe 1 " << name << " " << gateName << " " << g->getGateTypeName() << " " << gateTypeName << endl;
                     }
+                    // assert(g->isInOldCircuit());
                     _patchNtk->setGateName2Gate(g->getGateName() + "_in", g->getGateName(), g);
                     g = new gv::cir::EcoGate(gateTypeName, gateName);
                     _patchNtk->addGate(g);
@@ -420,7 +678,8 @@ EcoMgr::createOrGetPatchGate(const string& gateTypeName, const string& gateName)
                     if(gateName.substr(gateName.size()-3, 3) == "_in") {
                         cout << "yabe 2 " << gateName << endl;
                     }
-                    g = _patchNtk->getGateByName(gateName+"_in");
+                    // assert(g->isInOldCircuit());
+                    g = _patchNtk->getGateByName(gateName);
                     if(!g) {
                         g = new gv::cir::EcoGate(gateTypeName, gateName + "_in");
                         _patchNtk->addGate(g);
@@ -430,6 +689,8 @@ EcoMgr::createOrGetPatchGate(const string& gateTypeName, const string& gateName)
         }
         // case 1.
         else {
+            // if(gateName == "prim_out[6]_N")
+            // assert(0);
             g = new gv::cir::EcoGate(gateTypeName, gateName);
             _patchNtk->addGate(g);
         }

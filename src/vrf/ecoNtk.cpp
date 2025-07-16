@@ -141,6 +141,16 @@ EcoGate::addFaninName(const string& name) {
   // if the fanin name already exists, no need to add
   if(find(_faninNames.begin(), _faninNames.end(), name) != _faninNames.end())
     return;
+  if(getGateType() == ECO_BUF_GATE || getGateType() == ECO_NOT_GATE) {
+    // if(getGateName() == "prim_out[6]_N") {
+    //   cout << "prim_out[6]_N adding fanin name " << name << endl;
+    //   assert(0)
+    // }
+    if(!_faninNames.empty()) {
+      cout << "adding 2nd fanin for a buf/not gate " << getGateFullName() << " " << "dummy fanin " << name << endl;
+      // assert(0);
+    }
+  }
   // add the fanin name
   _faninNames.push_back(name);
 }
@@ -483,7 +493,7 @@ EcoNtk::genConnection() {
     for(auto& faninName : gate->_faninNames) {
       EcoGate* fanin = getGateByName(faninName);
       if(fanin == nullptr) {
-        cout << "err " << faninName << endl;
+        cout << "err " << gate->getGateFullName() << " not found fanin " << faninName << endl;
       }
       assert(fanin != nullptr);
       gate->_fanins.push_back(fanin);
@@ -603,11 +613,15 @@ EcoNtk::parsePI(const string& dir) {
     }
   }
   file.close();
-  EcoGate* const0 = new EcoGate("const0", "1'b0");
-  addGate(const0);
+  if(!getGateByName("1'b0")) {
+    EcoGate* const0 = new EcoGate("const0", "1'b0");
+    addGate(const0);
+  }
   // _PIList.push_back(const0);
-  EcoGate* const1 = new EcoGate("const1", "1'b1");
-  addGate(const1);
+  if(!getGateByName("1'b1")) {
+    EcoGate* const1 = new EcoGate("const1", "1'b1");
+    addGate(const1);
+  }
   // _PIList.push_back(const1);
   sort(_PIList.begin(), _PIList.end(), [](EcoGate* g1, EcoGate* g2) {
     return (g1->getGateName() < g2->getGateName());

@@ -83,8 +83,10 @@ public:
   // get function
   string getOldDesignName() { return _oldDesignName; }
   string getNewDesignName() { return _newDesignName; }
-
+  
+  // ---------------------
   // matching functions
+  // ---------------------
   // general matching function
   void matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo = -1); // match the cuts at the gate pair
   bool match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo = -1);
@@ -93,7 +95,9 @@ public:
   bool checkMatchValid(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int outputInv, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch); // function to check that if the matching is indeed valid
   bool checkMatchValidWithConst(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int outputInv, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch, unordered_map<gv::cir::EcoGate*, bool>& constAssignmentOld, unordered_map<gv::cir::EcoGate*, bool>& constAssignmentNew);
   
+  // ---------------------
   // score computation functions
+  // ---------------------
   void sortCandCutsByScore(); // collect the enumerated cuts and compute their scores
 
   // signature computation functions
@@ -138,20 +142,34 @@ public:
   void addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir::EcoGate* fixedFanout, bool inv, unsigned fixedPo);
   void reportRPPair();
   
+  // ---------------------
   // generate patch
+  // ---------------------
   void genPatch(const string& patchName);
   void decideOutputRewire();
-  void generateFinalRpRewire(unordered_set<gv::cir::EcoGate*>& usedNewGate);
+  // write patch ntk functions
+  void generateFinalRpRewire();
   void generatePatchForIthPo(unsigned i);
-  void generateNewGateLogics(unordered_set<gv::cir::EcoGate*>& usedNewGate);
+  void generateNewGateLogics();
+  // patch check functions
   bool applyNCheckPatch(const string& patchName);
+  // patch generation helper functions
   void addPatchPoName(const string& name) { _patchPoNames.insert(name); }
   bool isInPatchPoNames(const string& name) const { return _patchPoNames.count(name); }
   string getPatchGateName(gv::cir::EcoGate* g); //decide whether the old gate in the patch needs to add _in suffix
   string getPatchWireName() { return "eco_wire_" + to_string(_patchWireCount++); }
   gv::cir::EcoGate* createOrGetPatchGate(const string& gateTypeName, const string& gateName);
+  void dupMergedGates();
+  void addDupedMergedGate(gv::cir::EcoGate* g, gv::cir::EcoGate* dupG) { _dupGateMap[g] = dupG; }
+  gv::cir::EcoGate* getDupedMergedGate(gv::cir::EcoGate* g) { if(!_dupGateMap.count(g)) return nullptr; return _dupGateMap.at(g); }
+  string getDupGateName(gv::cir::EcoGate* g, unsigned ithPo);
+  bool checkIfHasToDup(gv::cir::EcoGate* g, unsigned ithPo);
+  bool checkIfHasToFixPo(unsigned ithPo);
 
-  // enum
+  // ---------------------
+  // enum definitions
+  // ---------------------
+  // Used to indicate if two gates eq status, used when we want to find the merged gates
   enum EQStatus {
     ECO_GATES_NEQ = 0,     // the two gates are not eq
     ECO_GATES_EQ = 1,      // the two gates are eq
@@ -179,7 +197,10 @@ private:
   // patch ntk
   gv::cir::EcoNtk* _patchNtk;
   unsigned _patchWireCount;
-  unordered_set<string> _patchPoNames;
+  unordered_set<string> _patchPoNames; // used to record the patch po names, and add "_in" string for gate used for both po and pi in patch circuit
+  unordered_set<gv::cir::EcoGate*> _usedNewGate;
+  unordered_map<gv::cir::EcoGate*, vector<unsigned>> _oldGateUsedByPo; // record the old gate that is use by po i to fix itself
+  unordered_map<gv::cir::EcoGate*, gv::cir::EcoGate*> _dupGateMap; // use the original gate to find the duplicated gate in the patch circuit
 
   // record the merge information
   unordered_map<gv::cir::EcoGate*, unordered_set<gv::cir::EcoGate*>> _mergeTable;

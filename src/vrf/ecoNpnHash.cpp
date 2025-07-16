@@ -269,6 +269,14 @@ EcoNPNHash::encodeMatch2SizeT(int outputMatch, vector<int>& inputMatch) {
       ret += 1;
   }
 
+  // this is only to do integrity check
+  // auto[outputMatch_, inputMatch_] = decodeEncodedSizeTMatch(ret, inputMatch.size());
+  // assert(outputMatch == outputMatch_);
+  // for(unsigned i=0; i<inputMatch.size(); ++i) {
+  //   assert(inputMatch.at(i) < 2 * inputMatch.size());
+  //   assert(inputMatch.at(i) == inputMatch_.at(i));
+  // }
+
   return ret;
 }
 
@@ -308,10 +316,18 @@ EcoNPNHash::getNPNHashFull(size_t cutTT, unsigned simSize) {
    string NPNClass;
 
    if(simSize <= 1) {
-    if(cutTT)
-      return {"0", {{0,2}, {1,3}}};
-    else
-      return {"0", {{0,3}, {1,2}}};
+    if(cutTT == 0)      return {"0", {{0,2}, {1,3}}};
+    else if(cutTT == 1) return {"1", {{0,2}, {1,3}}};
+    else if(cutTT == 2) return {"1", {{0,3}, {1,2}}};
+    else if(cutTT == 3) return {"0", {{0,3}, {1,2}}};
+    // if(cutTT == 0 || cutTT == 3) {
+    //   cout << "full 11111" << endl;
+    //   return {"0", {{0,2}, {1,3}}};
+    // }
+    // else {
+    //   cout << "full 222222" << endl;
+    //   return {"0", {{0,3}, {1,2}}};
+    // }
   }
 
    unsigned offset = 0;
@@ -335,10 +351,18 @@ EcoNPNHash::getNPNHashFull(size_t cutTT, unsigned simSize) {
 pair<string, vector<int>>
 EcoNPNHash::getNPNHash(size_t cutTT, unsigned cutSize) {
   if(cutSize <= 1) {
-    if(cutTT)
+    if(cutTT == 0)  return {"0", {0, 2}};
+    else if(cutTT == 1)  return {"1", {0, 2}};
+    else if(cutTT == 2)  return {"1", {0, 3}};
+    else if(cutTT == 3)  return {"0", {0, 3}};
+    if(cutTT == 0 || cutTT == 3) {
+      cout << "normal 11111" << endl;
       return {"0", {0, 2}};
-    else
+    }
+    else {
+      cout << "normal 22222" << endl;
       return {"0", {0, 3}};
+    }
   }
   else if(cutSize <= 4) {
     // compute the offset for the smaller cuts
@@ -391,6 +415,8 @@ EcoMgr::getNPNHash(gv::cir::EcoCut* cut) {
     cutTT = _oldNtk->computeCutTT(cut);
   else
     cutTT = _newNtk->computeCutTT(cut);
+  cout << "tt : " << cutTT << endl;
+  printBits(cutTT);
 
   return _pNpnHash->getNPNHash(cutTT, cutSize);
 }
@@ -405,6 +431,8 @@ EcoMgr::getNPNHashFull(gv::cir::EcoCut* cut) {
     cutTT = _oldNtk->computeCutTT(cut);
   else
     cutTT = _newNtk->computeCutTT(cut);
+  cout << "full tt : " << cutTT << endl;
+  printBits(cutTT);
 
   return _pNpnHash->getNPNHashFull(cutTT, cutSize);
 }
