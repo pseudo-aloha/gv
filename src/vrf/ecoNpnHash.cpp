@@ -355,14 +355,14 @@ EcoNPNHash::getNPNHash(size_t cutTT, unsigned cutSize) {
     else if(cutTT == 1)  return {"1", {0, 2}};
     else if(cutTT == 2)  return {"1", {0, 3}};
     else if(cutTT == 3)  return {"0", {0, 3}};
-    if(cutTT == 0 || cutTT == 3) {
-      cout << "normal 11111" << endl;
-      return {"0", {0, 2}};
-    }
-    else {
-      cout << "normal 22222" << endl;
-      return {"0", {0, 3}};
-    }
+    // if(cutTT == 0 || cutTT == 3) {
+    //   cout << "normal 11111" << endl;
+    //   return {"0", {0, 2}};
+    // }
+    // else {
+    //   cout << "normal 22222" << endl;
+    //   return {"0", {0, 3}};
+    // }
   }
   else if(cutSize <= 4) {
     // compute the offset for the smaller cuts
@@ -415,8 +415,6 @@ EcoMgr::getNPNHash(gv::cir::EcoCut* cut) {
     cutTT = _oldNtk->computeCutTT(cut);
   else
     cutTT = _newNtk->computeCutTT(cut);
-  cout << "tt : " << cutTT << endl;
-  printBits(cutTT);
 
   return _pNpnHash->getNPNHash(cutTT, cutSize);
 }
@@ -431,8 +429,6 @@ EcoMgr::getNPNHashFull(gv::cir::EcoCut* cut) {
     cutTT = _oldNtk->computeCutTT(cut);
   else
     cutTT = _newNtk->computeCutTT(cut);
-  cout << "full tt : " << cutTT << endl;
-  printBits(cutTT);
 
   return _pNpnHash->getNPNHashFull(cutTT, cutSize);
 }

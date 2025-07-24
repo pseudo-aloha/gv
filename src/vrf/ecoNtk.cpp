@@ -131,8 +131,11 @@ EcoNtk::addGate(EcoGate* g) {
   GateVec.push_back(g);
   
   // if the gate type is pi, add it to PI list
-  if(g->isPi())
+  if(g->isPi()) {
+    if(g->getGateName() == "op[0]_in")
+      cout << "kkkkkkk" << endl;
     addPi(g);
+  }
 }
 
 void

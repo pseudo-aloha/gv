@@ -29,7 +29,7 @@ void
 EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir::EcoGate* fixedFanout, bool inv, unsigned fixedPo) {
     // if the rp gate is merged to the old gate and the pole also matches, we don't have to add it in to rp pairs
     if(isMerged(oldGate)) {
-        cout << "mermermer : " << oldGate->getGateFullName() << " " << newGate->getGateFullName() << endl;
+        cout << "mermermer : " << oldGate->getGateFullName() << " " << newGate->getGateFullName() << " " << inv << endl;
         // cout << mergedAig << 
         auto[mergedAig, mergedPole] = getMergedAig(oldGate);
         if(mergedAig == newGate->getAigNode() && ((mergedPole ^ newGate->getAigNodeInv() ^ inv) == false)) {
@@ -181,6 +181,10 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
             if(foundMatch) break;
         }
     }
+
+    // if there is no rp pair found, fix it from po
+    if(!foundMatch)
+        addRPPair(oldGate, newGate, _oldNtk->getPo(ithPo), false, ithPo);
 }
 
 // use the bits of the size_t to control each constant assignment bits
@@ -758,7 +762,7 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
     }
 
     // if no valid match is found, return false
-    if(!candMatch) return false;
+    if(bestScore < 0) return false;
     
     
     // find a match way that can maximally match the merged gates
@@ -816,9 +820,9 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
 
         // cout << "old gate : " << oldGate->getGateFullName() << endl;
         // oldCut->reportCut();
-        for(auto[g, fo] : fixedFanout) {
-            cout << "gate " << g->getGateFullName() << " fixed to " << newGate->getGateFullName() << " fixed fanout " << fo->getGateFullName() << " " << inv << endl;
-        }
+        // for(auto[g, fo] : fixedFanout) {
+            // cout << "gate " << g->getGateFullName() << " fixed to " << newGate->getGateFullName() << " fixed fanout " << fo->getGateFullName() << " " << inv << endl;
+        // }
 
         addRPPair(oldGate, newGate, fixedFanout.at(oldGate), inv, ithPo);
     }

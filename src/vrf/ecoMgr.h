@@ -165,6 +165,11 @@ public:
   string getDupGateName(gv::cir::EcoGate* g, unsigned ithPo);
   bool checkIfHasToDup(gv::cir::EcoGate* g, unsigned ithPo);
   bool checkIfHasToFixPo(unsigned ithPo);
+  void addNeedTodupGate(gv::cir::EcoGate* g) { if(g->isPiOrConst()) return; _gatesNeedToDup.insert(g); }
+  bool isNeedToDup(gv::cir::EcoGate* g) { return _gatesNeedToDup.count(g); }
+  void addRewiredPiMap(gv::cir::EcoGate* oldPi, pair<gv::cir::EcoGate*, bool> mappedGateAndPole) { _reWiredPiMap[oldPi] = mappedGateAndPole; }
+  pair<gv::cir::EcoGate*, bool> getRewiredPiMapGateAndPole(gv::cir::EcoGate* oldPi) { if(!_reWiredPiMap.count(oldPi)) return {nullptr, false}; return _reWiredPiMap.at(oldPi); }
+  // string addInSuffix()
 
   // ---------------------
   // enum definitions
@@ -199,8 +204,10 @@ private:
   unsigned _patchWireCount;
   unordered_set<string> _patchPoNames; // used to record the patch po names, and add "_in" string for gate used for both po and pi in patch circuit
   unordered_set<gv::cir::EcoGate*> _usedNewGate;
-  unordered_map<gv::cir::EcoGate*, vector<unsigned>> _oldGateUsedByPo; // record the old gate that is use by po i to fix itself
+  unordered_map<gv::cir::EcoGate*, unsigned> _oldGateUsedByPo; // record the old gate that is use by po i to fix itself
   unordered_map<gv::cir::EcoGate*, gv::cir::EcoGate*> _dupGateMap; // use the original gate to find the duplicated gate in the patch circuit
+  unordered_set<gv::cir::EcoGate*> _gatesNeedToDup;
+  unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> _reWiredPiMap;
 
   // record the merge information
   unordered_map<gv::cir::EcoGate*, unordered_set<gv::cir::EcoGate*>> _mergeTable;
