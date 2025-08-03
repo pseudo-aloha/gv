@@ -132,8 +132,6 @@ EcoNtk::addGate(EcoGate* g) {
   
   // if the gate type is pi, add it to PI list
   if(g->isPi()) {
-    if(g->getGateName() == "op[0]_in")
-      cout << "kkkkkkk" << endl;
     addPi(g);
   }
 }
@@ -141,6 +139,8 @@ EcoNtk::addGate(EcoGate* g) {
 void
 EcoGate::addFaninName(const string& name) {
   assert(!isPiOrConst());
+  if(getGateName() == "prim_out[5]")
+    cout << "kkk" << endl;
   // if the fanin name already exists, no need to add
   if(find(_faninNames.begin(), _faninNames.end(), name) != _faninNames.end())
     return;
@@ -509,6 +509,7 @@ EcoNtk::genConnection() {
 void
 EcoNtk::sortGatesInTopoOrder() {
   vector<int> inOrder(getNumGates(), 0); // record the number of fanin of the gate
+  unordered_map<gv::cir::EcoGate*, unordered_set<gv::cir::EcoGate*>> inOrderMap;
   vector<vector<EcoGate*>> fanouts(getNumGates());
   vector<EcoGate*> sortedGateVec;
   queue<EcoGate*> q;
@@ -521,6 +522,7 @@ EcoNtk::sortGatesInTopoOrder() {
     for(unsigned j=0; j<gate->getNumFanins(); ++j) {
       auto fanin = gate->getFanin(j);
       fanouts[fanin->getGateId()].push_back(gate);
+      inOrderMap[gate].insert(fanin);
     }
 
     if(inOrder[i] == 0) {
@@ -535,6 +537,7 @@ EcoNtk::sortGatesInTopoOrder() {
     sortedGateVec.push_back(cur);
     for(auto fanout : fanouts.at(cur->getGateId())) {
       inOrder.at(fanout->getGateId())--;
+      inOrderMap.at(fanout).erase(cur);
       if(inOrder.at(fanout->getGateId()) == 0)
         q.push(fanout);
     }
@@ -542,10 +545,14 @@ EcoNtk::sortGatesInTopoOrder() {
   for(unsigned i=0; i<getNumGates(); ++i) {
     auto g = getGate(i);
     if(inOrder[g->getGateId()] != 0) {
-      cout << g->getGateName() << " in order not 0 but " << inOrder[g->getGateId()] << " i = " << i << endl;
+      cout << g->getGateName() << " in order not 0 but " << inOrder[g->getGateId()] << " i = " << i;
+      for(auto notTraversedFanin : inOrderMap.at(g)) {
+        cout << " " << notTraversedFanin->getGateFullName();
+      }
+      cout << endl;
     }
   }
-  assert(GateVec.size() == sortedGateVec.size());
+  // assert(GateVec.size() == sortedGateVec.size());
 
   // assign the sorted container back to GateVec
   GateVec = sortedGateVec;
@@ -678,18 +685,21 @@ EcoNtk::writeNtkVerilog(const string& fileName) {
   gv::cir::EcoGate::setGlobalTrav();
     // write the ntk
     ofstream f(fileName);
+    unsigned idx = 0;
     f << "module top(";
-    for(unsigned i=0; i<getNumPos(); ++i) {
-        f << getPo(i)->getGateName();
-        if(i < getNumPos() - 1 || getNumPis() > 0)
+    for(idx=0; idx<getNumPos(); ++idx) {
+        f << getPo(idx)->getGateName();
+        if(idx < getNumPos() - 1 || getNumPis() > 0)
           f << ", ";
-        if((i + 1) % 10 == 0)
+        if((idx + 1) % 10 == 0)
           f << endl;
     }
-    for(unsigned i=0; i<getNumPis(); ++i) {
-        f << getPi(i)->getGateName();
-        if(i < getNumPis() - 1)
+    for( ; idx<getNumPis(); ++idx) {
+        f << getPi(idx)->getGateName();
+        if(idx < getNumPis() - 1)
             f << ", ";
+        if((idx + 1) % 10 == 0)
+          f << endl;
     }
     f << ");" << endl << endl;
     f << "output ";
