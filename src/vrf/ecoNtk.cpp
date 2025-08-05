@@ -136,6 +136,25 @@ EcoNtk::addGate(EcoGate* g) {
   }
 }
 
+// will check if the gate already exists (by checking the name)
+// if the gate already exists, then we don't create a redundant one
+// if the gate is a inv gate, we will check if we already have it
+void
+EcoNtk::checkGateNAdd(EcoGate* g) {
+  if(_gateName2Gate.count(g->getGateName())) {
+      return;
+  }
+   _gateName2Gate[g->getGateName()] = g;
+  // push the gate
+  g->setGateId(getNumGates());
+  GateVec.push_back(g);
+  
+  // if the gate type is pi, add it to PI list
+  if(g->isPi()) {
+    addPi(g);
+  }
+}
+
 void
 EcoGate::addFaninName(const string& name) {
   assert(!isPiOrConst());
@@ -294,12 +313,12 @@ vector<string> getWiresPorts(const string& line) {
   int lsb = -1, msb = -1;
   bool flag = false;
   for(size_t i = 0, n = line.size(); i < n; i++) {
-    if(line[i] == ' ')
-      flag = true;
+    // if(line[i] == ' ')
+    //   flag = true;
     
-    if(flag && line[i] != ' ' && line[i] != ',' && line[i] != ';')
+    if(line[i] != ' ' && line[i] != ',' && line[i] != ';')
       buf.push_back(line[i]);
-    else if(flag) {
+    else {
       if(!buf.empty()) {
         if(buf[0] == '[') {
           string lsbStr, msbStr;

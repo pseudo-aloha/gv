@@ -167,11 +167,11 @@ public:
   bool checkIfHasToFixPo(unsigned ithPo);
   void addNeedTodupGate(gv::cir::EcoGate* g) { if(g->isConstGate()) assert(0); /* donot want to dup const gate*/ _gatesNeedToDup.insert(g); }
   bool isNeedToDup(gv::cir::EcoGate* g) { return _gatesNeedToDup.count(g); }
-  void addRewiredPiMap(gv::cir::EcoGate* oldPi, pair<gv::cir::EcoGate*, bool> mappedGateAndPole) { _reWiredPiMap[oldPi] = mappedGateAndPole; }
-  pair<gv::cir::EcoGate*, bool> getRewiredPiMapGateAndPole(gv::cir::EcoGate* oldPi) { if(!_reWiredPiMap.count(oldPi)) return {nullptr, false}; return _reWiredPiMap.at(oldPi); }
   bool isFixedToAnotherGate(gv::cir::EcoGate* g);
   bool isFixedToItSelf(gv::cir::EcoGate* g);
-  // string addInSuffix()
+  
+  // resynthesis circuit
+  void reSynsethesis(const string& oldDir, const string& newDir);
 
   // ---------------------
   // enum definitions

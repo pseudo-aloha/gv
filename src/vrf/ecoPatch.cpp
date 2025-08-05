@@ -109,7 +109,6 @@ EcoMgr::decideOutputRewire() {
 
         // if the output is eq originally, we also need to record that the nets in its fanin cone should not be rewired
         if(rpForIthPo.empty()) {
-            cout << "no need " << _oldNtk->getPo(i)->getGateFullName() << endl;
             // do BFS trav
             gv::cir::EcoGate::setGlobalTrav();
             queue<gv::cir::EcoGate*> q;
@@ -187,16 +186,14 @@ EcoMgr::decideOutputRewire() {
                     if(visited.count(cur)) continue;
                     visited.insert(cur);
                     
-                    //
                     if(isMerged(cur) && cur->isInNewCircuit()) {
                         auto[mergedGate, mergedPole] = getOneMergedGate(cur, false);
-                        // cout << "mp " << mergedGate->getGateFullName() << endl;
                         if(!visited.count(mergedGate)) 
                             q.push(mergedGate);
                     }
                     else {
                         if(cur->isInOldCircuit() && cur != mappedGate) {
-                            cout << "freeze1 : " << cur->getGateFullName() << endl;
+                            // cout << "freeze1 : " << cur->getGateFullName() << endl;
                             frozenGates.insert(cur);
                         }
                         for(unsigned j=0; j<cur->getNumFanins(); ++j) {
@@ -221,7 +218,7 @@ EcoMgr::decideOutputRewire() {
             visited.insert(cur);
 
             frozenGates.insert(cur);
-            cout << "freeze2 : " << cur->getGateFullName() << endl;
+            // cout << "freeze2 : " << cur->getGateFullName() << endl;
 
             
             // reached the rp point
@@ -264,8 +261,7 @@ EcoMgr::decideOutputRewire() {
             }
         }
         _finalRpPair[oldGate] = cand;
-        if(oldGate->isPi())
-            addRewiredPiMap(oldGate, cand);
+
         f << endl;
         if(frozenGates.count(oldGate))
             f << "......................... " << oldGate->getGateFullName() << endl;
@@ -277,6 +273,180 @@ EcoMgr::decideOutputRewire() {
         f << oldGate->getGateFullName() << " " << (mappedPole ? "~" : "") << mappedGate->getGateFullName() << endl;
     }
     f.close();
+}
+
+void removeSlashFromFile(const std::string& inputFileName, const std::string& outputFileName) {
+    // Open input file
+    std::ifstream inputFile(inputFileName);
+    if (!inputFile.is_open()) {
+        std::cerr << "Error opening input file: " << inputFileName << std::endl;
+        return;
+    }
+
+    // Open output file
+    std::ofstream outputFile(outputFileName);
+    if (!outputFile.is_open()) {
+        std::cerr << "Error opening output file: " << outputFileName << std::endl;
+        inputFile.close();
+        return;
+    }
+
+    char c;
+    // Read input file character by character
+    while (inputFile.get(c)) {
+        // Write character to output file if it is not '/'
+        if (c != '\\') {
+            outputFile << c;
+        }
+    }
+
+    // Close files
+    inputFile.close();
+    outputFile.close();
+}
+void
+parseNetName(int i, string buf, vector<string>& gateLine) {
+  string netName;
+  for( ; i<buf.size(); ++i) {
+    if(buf[i] != ',' && buf[i] != ' ' && buf[i] != ')' && buf[i] != ';') {
+      netName.push_back(buf[i]);
+    }
+    else if(netName.size()){
+      gateLine.push_back(netName);
+      netName.clear();
+    }
+  }
+  if(netName.size()){
+    gateLine.push_back(netName);
+    netName.clear();
+  }
+}
+
+void
+rewriteAbcVerilog(string sourceName, string targetName) {
+//   extern void parseNetName(int i, string buf, vector<string>& gateLine);
+  removeSlashFromFile(sourceName, ".interVerilog2.v");
+
+  ifstream fin(".interVerilog2.v", ios::in);
+  ofstream fout(targetName, ios::out);
+  unordered_set<string> verGateNames = {"not", "buf", "and", "nand", "or", "nor", "xor", "xnor"};
+  string buf, fanoutName;
+  vector<string> gateLine;
+  int wireCount = 0;
+  while(fin>>buf) {
+    gateLine.clear();
+    if(verGateNames.count(buf)) {
+      assert(0);
+    }
+    else if(buf == "assign") {
+      vector<string> gateLine;
+      while(buf[buf.size() - 1] != ';') {
+        fin >> buf;
+        parseNetName(0, buf, gateLine);
+      }
+      fanoutName = gateLine.at(0);
+      if(gateLine.size() == 3) {
+        if(gateLine.at(2).at(0) == '~')
+          fout << "not (" << gateLine.at(0) << ", " << gateLine.at(2).substr(1, gateLine.at(2).size() - 1) << ");" << endl;
+        else
+          fout << "buf (" << gateLine.at(0) << ", " << gateLine.at(2).substr(0, gateLine.at(2).size()) << ");" << endl;
+      }
+      else if(gateLine.size() == 5) {
+        string in0 = gateLine.at(2), in1 = gateLine.at(4);
+        string gateName;
+        if(gateLine.at(3) == "&")
+          gateName = "and";
+        else if(gateLine.at(3) == "|")
+          gateName = "or";
+        else if(gateLine.at(3) == "^")
+          gateName = "xor";
+        else 
+          assert(0);
+        if(in0.at(0) == '~') {
+          string wireName = "myWire_" + to_string(wireCount++);
+          in0 = in0.substr(1, in0.size() - 1);
+          fout << "wire " << wireName << ";" << endl;
+          fout << "not (" << wireName << ", " << in0 << ");" << endl;
+          in0 = wireName;
+        }
+        if(in1.at(0) == '~') {
+          string wireName = "myWire_" + to_string(wireCount++);
+          in1 = in1.substr(1, in1.size() - 1);
+          fout << "wire " << wireName << ";" << endl;
+          fout << "not (" << wireName << ", " << in1 << ");" << endl;
+          in1 = wireName;
+        }
+        fout << gateName << " (" << fanoutName << ", " << in0 << ", " << in1 << ");" << endl;
+      }
+      else {
+        cout << "err " << buf << endl;
+        assert(0);
+      }
+    }
+    else if(buf == "wire" || buf == "output" || buf == "input") {
+      string wireName;
+      fout << buf << " ";
+      int counter = 0;
+      do {
+        fin >> buf;
+        for(auto ch : buf) {
+          if(ch == ',' || ch == ';' || ch == ' ') {
+            if(!wireName.empty()) {
+              fout << wireName;
+              if(ch == ',')
+                fout << ", ";
+              else if(ch == ';')
+                fout << ";" << endl;
+              wireName.clear();
+            }
+          }
+          else {
+            wireName.push_back(ch);
+          }
+        }
+        if(++counter % 10 == 0)
+          fout << endl;
+      } while(buf.find(";") == string::npos);
+    }
+    else if(buf == "module" || buf == "endmodule"){
+        fout << buf << " ";
+        // if(!buf.empty()) {
+          int counter = 0;
+          do {
+            if(!(fin >> buf))
+              break;
+            fout << buf << " ";
+            if(++counter % 10 == 0)
+              fout << endl;
+          } while(buf.find(";") == string::npos);
+        // }
+        fout << endl;
+    }
+    
+  }
+  fin.close();
+  fout.close();
+}
+
+void
+EcoMgr::reSynsethesis(const string& oldDir, const string& newDir) {
+  char Command[1024], abcCmd[128];
+  sprintf(Command, "%s", ("read " + oldDir).c_str());
+  abcMgr->execCmd(Command);
+  sprintf(Command, "%s", "strash");
+  abcMgr->execCmd(Command);
+  sprintf(Command, "%s", "fraig");
+  abcMgr->execCmd(Command);
+  sprintf(Command, "%s", "resub -l -F 9 -K 15");
+  abcMgr->execCmd(Command);
+  sprintf(Command, "%s", "refactor -l");
+  abcMgr->execCmd(Command);
+  sprintf(Command, "%s", "rewrite");
+  abcMgr->execCmd(Command);
+  string commandStr = "write_verilog -a int.v";
+  sprintf(Command, "%s", commandStr.c_str());
+  abcMgr->execCmd(Command);
+  rewriteAbcVerilog("int.v", newDir);
 }
 
 // generate the patch
@@ -305,10 +475,13 @@ EcoMgr::genPatch(const string& patchName) {
 
     // write the patch ntk
     _patchNtk->writeNtkVerilog("patch.v"); // write the patch content
-    _patchNtk->computeCadContestCost();
+    // _patchNtk->computeCadContestCost();
+
+    // resynthesize the patch
+    reSynsethesis("patch.v", "patchResyn.v");
 
     // apply the patch to old circuit and do equivalence checking between it and the new circuit
-    if(!applyNCheckPatch(patchName))
+    if(!applyNCheckPatch("patchResyn.v"))
         cout << "patched circuit NEQ to new circuit!!!!" << endl;
     else
         cout << "patched circuit eq to new circuit!!!!" << endl;
@@ -369,7 +542,6 @@ EcoMgr::dupMergedGates() {
         auto g = _oldNtk->getGate(i);
         // if the gate is merged and its function has been changed, we need to duplicate its function
         if(isNeedToDup(g)) {
-            // cout << "ddd " << g->getGateFullName() << endl;
             auto gateName = g->getGateName();
             if(g->isPi()) gateName += "_in";
             else gateName += "_dup";
@@ -407,16 +579,13 @@ EcoMgr::getPatchGateName(gv::cir::EcoGate* g) {
         auto[mergedGate, pole] = getOneMergedGate(g, false);
         assert(mergedGate->isInOldCircuit());
         string gateName;
-        // if()
+
         if(getDupedMergedGate(mergedGate)) {
-            // cout << "jjj " << mergedGate->getGateFullName() << endl;
             gateName = getDupedMergedGate(mergedGate)->getGateName();
         }
         else {
             gateName = mergedGate->getGateName();
             _usedNewGate.insert(mergedGate);
-            // if(mergedGate->getGateFullName() == "wc21_N")
-            //     assert(0);
         }
 //         //
         string rewireGateTypeStr = (pole ? "not" : "pi");
@@ -446,10 +615,8 @@ EcoMgr::generateFinalRpRewire() {
         
         // if the gate is rewired to itself, no need to add a rewire gate here
         if(oldGate == mappedGate && inv == false) {
-            // cout << "no need rewire : " << oldGate->getGateFullName() << endl;
             continue;
         }
-        // cout << "ooo " << oldGate->getGateFullName() << " " << getPatchGateName(mappedGate) << endl;
         // create rewiring gate
         string gateTypeName = (inv ? "not" : "buf");
         string gateName = oldGate->getGateName();
@@ -741,6 +908,7 @@ EcoMgr::applyNCheckPatch(const string& patchName) {
     unordered_set<string> oldPiNames;
     unordered_set<string> rewiredPiInPatch; // need to handle the case if the PI of orinal circuit is rewired
     unordered_set<string> rewiredPiInOldNtk;
+    unordered_map<string, string> renameRewiredPi;
 
     // Do some preprocessing things
     // collect Pi names of the orginal circuit
@@ -758,12 +926,14 @@ EcoMgr::applyNCheckPatch(const string& patchName) {
             if(suffix == "_in" && oldPiNames.count(strip_in(piName))) {
                 rewiredPiInPatch.insert(piName);
                 rewiredPiInOldNtk.insert(strip_in(piName));
+                renameRewiredPi[strip_in(piName)] = strip_in(piName) + "_out";
             }
         }
     }
 
     // 1. read the patch NTK (since I don't want to assume patch is written properly)
     patchNtk->readNtkFile(patchName);
+    patchNtk->computeCadContestCost();
 
     // 3. add patch logic
     for(unsigned i=0; i<_oldNtk->getNumPis(); ++i)
@@ -773,13 +943,19 @@ EcoMgr::applyNCheckPatch(const string& patchName) {
     for(unsigned i=0; i<patchNtk->getNumGates(); ++i) {
         auto patchGate = patchNtk->getGate(i);
         auto gateTypeName = patchGate->getGateTypeName();
-        // we do not define the pi gate in patch circuit, except 
-        if(gateTypeName == "pi" || rewiredPiInOldNtk.count(patchGate->getGateName())) {
-            // cout << "skipped " << patchGate->getGateName() << endl;
+        // we do not define the pi gate in patch circuit 
+        if(gateTypeName == "pi") {
+            
             continue;
         }
         auto patchGateName = patchGate->getGateName();
-        gv::cir::EcoGate* patchedGate = new gv::cir::EcoGate(gateTypeName, patchGate->getGateName());
+        // for the rewired pi in the old circuit, we need to do some special tricks
+        if(rewiredPiInOldNtk.count(patchGateName)) {
+            patchGateName = renameRewiredPi.at(patchGateName);
+        }
+
+        
+        gv::cir::EcoGate* patchedGate = new gv::cir::EcoGate(gateTypeName, patchGateName);
         
         // add the gate into patched gate
         patchedNtk->addGate(patchedGate);
@@ -819,8 +995,7 @@ EcoMgr::applyNCheckPatch(const string& patchName) {
 
         // check if the gate exists in the output of the patch circuit
         if(patchNtkPoNameSet.count(patchedGateName)) {
-            auto[mappedGate, pole] = getRewiredPiMapGateAndPole(oldGate);
-            if(mappedGate == nullptr)
+            if(!renameRewiredPi.count(patchedGateName))
                 patchedGateName += "_in";
         }
         
@@ -833,11 +1008,9 @@ EcoMgr::applyNCheckPatch(const string& patchName) {
         // add the fanins
         for(unsigned j=0; j<oldGate->getNumFanins(); ++j) {
             auto oldFanin = oldGate->getFanin(j);
-            auto[mappedGate, pole] = getRewiredPiMapGateAndPole(oldFanin);
             auto faninName = oldFanin->getGateName();
-            if(mappedGate != nullptr) {
-                faninName = mappedGate->getGateFullName();
-            //     cout << "orig " << oldFanin->getGateName() << " new " << mappedGate->getGateName() << endl;
+            if(renameRewiredPi.count(faninName)) {
+                faninName = renameRewiredPi.at(faninName);
             }
             patchedGate->addFaninName(faninName);
         }

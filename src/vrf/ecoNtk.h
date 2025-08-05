@@ -235,6 +235,7 @@ class EcoNtk {
     void addPo(EcoGate* g);
     void addPi(EcoGate* g);
     void addGate(EcoGate* g);
+    void checkGateNAdd(EcoGate* g);
     
 
     // get functions
