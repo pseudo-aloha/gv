@@ -158,19 +158,13 @@ EcoNtk::checkGateNAdd(EcoGate* g) {
 void
 EcoGate::addFaninName(const string& name) {
   assert(!isPiOrConst());
-  if(getGateName() == "prim_out[5]")
-    cout << "kkk" << endl;
   // if the fanin name already exists, no need to add
   if(find(_faninNames.begin(), _faninNames.end(), name) != _faninNames.end())
     return;
   if(getGateType() == ECO_BUF_GATE || getGateType() == ECO_NOT_GATE) {
-    // if(getGateName() == "prim_out[6]_N") {
-    //   cout << "prim_out[6]_N adding fanin name " << name << endl;
-    //   assert(0)
-    // }
     if(!_faninNames.empty()) {
       cout << "adding 2nd fanin for a buf/not gate " << getGateFullName() << " " << "dummy fanin " << name << endl;
-      // assert(0);
+      assert(0);
     }
   }
   // add the fanin name
@@ -788,8 +782,8 @@ EcoNtk::computeCadContestCost() {
   int totalCost = 0;
 
   for(const auto& g : GateVec) {
+    if(g->isPiOrConst()) continue; // pi and const gate will be counted in fanin
     wireNames.insert(g->getGateName());
-    if(g->isPiOrConst()) continue;
     for(unsigned i=0; i<g->getNumFanins(); ++i) {
       auto fanin = g->getFanin(i);
       wireNames.insert(fanin->getGateName());

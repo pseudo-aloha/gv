@@ -22,6 +22,7 @@ bool
 EcoMgr::isFixedToAnotherGate(gv::cir::EcoGate* g) {
     if(_finalRpPair.count(g)) {
         auto[mappedGate, mappedPole] = _finalRpPair.at(g);
+        // cout << "ooo " << mappedGate->getGateFullName() << " " << mappedPole << endl;
         if(g != mappedGate || mappedPole)
             return true;
     }
@@ -674,32 +675,30 @@ EcoMgr::generateNewGateLogics() {
 bool
 EcoMgr::checkIfHasToDup(gv::cir::EcoGate* g, unsigned ithPo) {
     auto rpForIthPo = _rpTable.at(ithPo);
-    if(_finalRpPair.count(g) && !rpForIthPo.count(g))
+    if(isFixedToAnotherGate(g) && !rpForIthPo.count(g)) {
         return true;
-    else if(_finalRpPair.count(g) && rpForIthPo.count(g)) {
+    }
+    else if(isFixedToAnotherGate(g) && rpForIthPo.count(g)) {
         auto finalInfo = _finalRpPair.at(g);
         auto thisPoInfo = rpForIthPo.at(g);
-        if(finalInfo.first != thisPoInfo->getMappedGate() || finalInfo.second != thisPoInfo->getMappedPole())
+        if(finalInfo.first != thisPoInfo->getMappedGate() || finalInfo.second != thisPoInfo->getMappedPole()) {
             return true;
+        }
     }
-    // for(unsigned j = 0; j < g->getNumFanins(); ++j) {
-    //     auto fanin = g->getFanin(j);
-    //     // if the fanin is changed by other rp point, dup the gate and rewire it to connect to the patch output
-    //     if(isFixedToAnotherGate(fanin)) {
-    //         if(!rpForIthPo.count(fanin))
-    //             return true;
-    //         auto finalInfo = _finalRpPair.at(fanin);
-    //         auto thisPoInfo = rpForIthPo.at(fanin);
-    //         if(finalInfo.first != thisPoInfo->getMappedGate() || finalInfo.second != thisPoInfo->getMappedPole())
-    //             return true;
-    //     }
-    // }
+    else if(isFixedToItSelf(g) && rpForIthPo.count(g)) {
+        auto finalInfo = _finalRpPair.at(g);
+        auto thisPoInfo = rpForIthPo.at(g);
+        if(finalInfo.first != thisPoInfo->getMappedGate() || finalInfo.second != thisPoInfo->getMappedPole()) {
+            return true;
+        }
+    }
     return false;
 }
 
 // We need to find the POs that are not fix by the final set of RP pairs we chose
 bool
 EcoMgr::checkIfHasToFixPo(unsigned ithPo) {
+    bool ret = false;
     auto rpForIthPo = _rpTable.at(ithPo);
     queue<gv::cir::EcoGate*> q;
     gv::cir::EcoGate::setGlobalTrav();
@@ -715,7 +714,7 @@ EcoMgr::checkIfHasToFixPo(unsigned ithPo) {
         cur->setToGlobalTrav();
 
         if(checkIfHasToDup(cur, ithPo))
-            return true;
+            ret = true;
         if(rpForIthPo.count(cur)) continue;
 
         // traverse its fanins
@@ -726,7 +725,7 @@ EcoMgr::checkIfHasToFixPo(unsigned ithPo) {
         }
     }
 
-    return false;
+    return ret;
 }
 
 
@@ -744,7 +743,7 @@ EcoMgr::generatePatchForIthPo(unsigned i) {
 
         return;
     }
-
+    cout << "have additional fix for " << _oldNtk->getPo(i)->getGateFullName() << endl;
     // Dup the gate from the output side
     auto oldPoGate = _oldNtk->getPo(i);
     auto newPoGate = _newNtk->getPo(i);
