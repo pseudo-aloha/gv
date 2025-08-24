@@ -22,7 +22,7 @@ bool
 EcoMgr::isFixedToAnotherGate(gv::cir::EcoGate* g) {
     if(_finalRpPair.count(g)) {
         auto[mappedGate, mappedPole] = _finalRpPair.at(g);
-        // cout << "ooo " << mappedGate->getGateFullName() << " " << mappedPole << endl;
+        
         if(g != mappedGate || mappedPole)
             return true;
     }
@@ -77,6 +77,13 @@ EcoMgr::getDupGateName(gv::cir::EcoGate* g, unsigned ithPo) {
         auto mappedGate = pEcoRpInfo->getMappedGate();
         auto mappedPole = pEcoRpInfo->getMappedPole();
         _usedNewGate.insert(mappedGate);
+        if(g == mappedGate && !mappedPole) {
+            if(getDupedMergedGate(g)) {
+                auto dupedMergedGate = getDupedMergedGate(g);
+                return dupedMergedGate->getGateName();
+            }
+            return g->getGateName();
+        }
         if(mappedPole) {
             gv::cir::EcoGate* invGate = createOrGetPatchGate("not", mappedGate->getGateFullName() + "_inv");
             invGate->addFaninName(getPatchGateName(mappedGate));
@@ -84,12 +91,12 @@ EcoMgr::getDupGateName(gv::cir::EcoGate* g, unsigned ithPo) {
         }
         return getPatchGateName(mappedGate);
     }
-    // if(getDupedMergedGate(g)) {
-    //     auto dupedMergedGate = getDupedMergedGate(g);
-    //     return dupedMergedGate->getGateName();
-    // }
-    if(g->isPiOrConst())
+
+    // Pi/const is visited and they are not rewired
+    if(g->isPiOrConst()) {
         return g->getGateName();
+    }
+
     // name the gate according to the count
     dupGateName = g->getGateName();
     dupGateName += "_for_po_" + _oldNtk->getPo(ithPo)->getGateName();
@@ -944,7 +951,6 @@ EcoMgr::applyNCheckPatch(const string& patchName) {
         auto gateTypeName = patchGate->getGateTypeName();
         // we do not define the pi gate in patch circuit 
         if(gateTypeName == "pi") {
-            
             continue;
         }
         auto patchGateName = patchGate->getGateName();
@@ -965,6 +971,9 @@ EcoMgr::applyNCheckPatch(const string& patchName) {
             auto faninName = patchFanin->getGateName();
             if(rewiredPiInPatch.count(faninName)) {
                 faninName = strip_in(faninName);
+            }
+            else if(renameRewiredPi.count(faninName)) {
+                faninName = renameRewiredPi.at(faninName);
             }
             patchedGate->addFaninName(faninName);
         }
@@ -1031,8 +1040,8 @@ EcoMgr::applyNCheckPatch(const string& patchName) {
     assert(Abc_NtkCoNum(pNtkPatched) == Abc_NtkCoNum(pNtkNew));
     bool ret = true;
     int neqCount = 0, eqCount = 0;
+    vector<string> nEqNames;
     for(int i=0; i < Abc_NtkCoNum(pNtkPatched); ++i) {
-        
         Abc_Obj_t* pachedPo = Abc_NtkCo(pNtkPatched, i);
         Abc_Obj_t* newPo = Abc_NtkCo(pNtkNew, i);
         Abc_Ntk_t * pNtkPatchedCone = Abc_NtkCreateCone( pNtkPatched, Abc_ObjFanin0(pachedPo), Abc_ObjName(pachedPo), 1 );
@@ -1040,18 +1049,19 @@ EcoMgr::applyNCheckPatch(const string& patchName) {
         if ( Abc_ObjFaninC0(pachedPo) ) Abc_ObjXorFaninC( Abc_NtkPo(pNtkPatchedCone, 0), 0 );
         if ( Abc_ObjFaninC0(newPo) ) Abc_ObjXorFaninC( Abc_NtkPo(pNtkNewCone, 0), 0 );
         if(!isNtkEq(pNtkPatchedCone, pNtkNewCone)) {
-            cout << "patched po " << Abc_ObjName(pachedPo) << " neq to new po " << Abc_ObjName(newPo) << endl;
+            nEqNames.push_back(Abc_ObjName(pachedPo));
             ret = false;
             ++neqCount;
         }
         else {
             ++eqCount;
-            cout << "eq po : " << Abc_ObjName(pachedPo) << endl;
         }
     }
     cout << "eq report :" << endl;
-    cout << "# eq po's : " << eqCount << endl;
-    cout << "# neq po's : " << neqCount << endl;
+    if(neqCount > 0) {
+        for(const auto& nEqName : nEqNames)
+            cout << nEqName << "neq" << endl;
+    }
 
     delete patchedNtk;
     return ret;

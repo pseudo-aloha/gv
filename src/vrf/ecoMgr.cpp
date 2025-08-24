@@ -28,7 +28,10 @@ EcoMgr::doEco(const string& oldDesignName, const string& newDesignName) {
   doMatching(6); // enumerate 6-feasible cuts
 
   // generate patch
+  genPatch("patch.v");
 
+  // do recycle
+  // doRecycle();
 }
 
 // read input designs
@@ -249,9 +252,17 @@ EcoMgr::doMatching(unsigned kFeassible) {
   // for(auto[oldGate, newGate] : _RPPair) {
   //   cout << oldGate->getGateFullName() << " -> " << newGate->getGateFullName() << endl;
   // }
+}
 
-  // generate patch
-  genPatch("patch.v");
+// do floating gate recycle
+void
+EcoMgr::doRecycle() {
+  // 1. Collect the floating gates in the old circuit
+  collectFloatingGates();
+
+  // 2. Map the floating gates to the sub-circuit in the patch
+  matchFloatingGates();
+
 }
 
 

@@ -159,8 +159,8 @@ public:
   void setNumMergedLeaves(unsigned i) { _numMergedLeaves = i; };
 
   // collect the gates within the cut
-  vector<EcoGate*> collectCurConeGate();
-  void collectCurConeGateRec(EcoGate* g, vector<EcoGate*>& gateList);
+  vector<EcoGate*> collectCutConeGate();
+  void collectCutConeGateRec(EcoGate* g, vector<EcoGate*>& gateList);
 
   // report functions
   void reportCut();

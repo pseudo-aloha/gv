@@ -11,6 +11,22 @@ namespace eco {
 extern bool getIthBit(const size_t num, int i);
 extern void printBits(size_t tt);
 
+class NPNClassSignature {
+public:
+    NPNClassSignature(string NPNClass, unsigned cutSize, unsigned numMergedGatesUnion) : _NPNClass(NPNClass), _cutSize(cutSize), _numMergedGatesUnion(numMergedGatesUnion) {}
+    ~NPNClassSignature() {}
+
+    string   getNPNClass()            { return _NPNClass; }
+    unsigned getCutSize()             { return _cutSize; }
+    unsigned getNumMergedGatesUnion() { return _numMergedGatesUnion; }
+
+private:
+    string _NPNClass;
+    unsigned _cutSize;
+    unsigned _numMergedGatesUnion;
+};
+
+
 unsigned
 EcoMgr::getGatesEqStatus(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) {
     if(!isMerged(oldGate) || !isMerged(newGate)) return ECO_GATES_NEQ;
@@ -27,13 +43,17 @@ EcoMgr::getGatesEqStatus(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) {
 // gate a fixed to gate b can fix fanout #i
 void
 EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir::EcoGate* fixedFanout, bool inv, unsigned fixedPo) {
+    cout << "mermermer : " << oldGate->getGateFullName() << " " << newGate->getGateFullName() << " " << inv << endl;
     // if the rp gate is merged to the old gate and the pole also matches, we don't have to add it in to rp pairs
     if(isMerged(oldGate)) {
-        cout << "mermermer : " << oldGate->getGateFullName() << " " << newGate->getGateFullName() << " " << inv << endl;
         // cout << mergedAig << 
         auto[mergedAig, mergedPole] = getMergedAig(oldGate);
         if(mergedAig == newGate->getAigNode() && ((mergedPole ^ newGate->getAigNodeInv() ^ inv) == false)) {
-            cout << "return" << endl;
+            if(!_rpTable.at(fixedPo).count(oldGate)) {
+                EcoRPInfo* pRPInfo = new EcoRPInfo(oldGate, fixedFanout, false);
+                assert(!_rpTable.at(fixedPo).count(oldGate));
+                _rpTable.at(fixedPo)[oldGate] = pRPInfo;
+            }
             return;
         }
     }
@@ -53,6 +73,50 @@ EcoMgr::reportRPPair() {
 
         }
     }
+}
+
+// sort the cuts by the number of the merged gates
+void
+EcoMgr::sortCutsByNumMergedGates(vector<gv::cir::EcoCut*>& cuts) {
+    sort(cuts.begin(), cuts.end(), [](gv::cir::EcoCut* a, gv::cir::EcoCut* b) {
+        return a->getNumMergedLeaves() > b->getNumMergedLeaves();
+    });
+}
+
+
+vector<string>
+EcoMgr::sortNPNClass(unordered_map<string, vector<gv::cir::EcoCut*>>& NPNClass2Cuts) {
+    vector<string> sortedNPNClass;
+    vector<NPNClassSignature*> sortedNPNClassSignatures;
+    
+    for(auto&[NPNClass, cuts] : NPNClass2Cuts) {
+        unsigned cutSize = cuts.front()->getCutSize();
+        
+        sortedNPNClass.push_back(NPNClass);
+        unordered_set<gv::cir::EcoGate*> mergedGateSt;
+        for(const auto& cut : cuts) {
+            for(const auto& leaf : cut->getLeaves()) {
+                if(isMerged(leaf))
+                    mergedGateSt.insert(leaf);
+            }
+        }
+        NPNClassSignature* NPNSig = new NPNClassSignature(NPNClass, cutSize, mergedGateSt.size());
+        sortedNPNClassSignatures.push_back(NPNSig);
+    }
+
+    sort(sortedNPNClassSignatures.begin(), sortedNPNClassSignatures.end(), [](NPNClassSignature* a, NPNClassSignature* b) {
+        // if(a->getCutSize() > b->getCutSize())
+        //     return true;
+        return a->getNumMergedGatesUnion() > b->getNumMergedGatesUnion();
+    });
+
+    for(const auto& NPNSig : sortedNPNClassSignatures)
+        sortedNPNClass.push_back(NPNSig->getNPNClass());
+    
+    for(const auto& NPNSig : sortedNPNClassSignatures)
+        delete NPNSig;
+
+    return sortedNPNClass;
 }
 
 // check if the 2 output cone are equivalent
@@ -100,9 +164,6 @@ EcoMgr::matchOnePo(unsigned ithPo) {
     gv::cir::EcoGate* oldPo = _oldNtk->getPo(ithPo);
     gv::cir::EcoGate* newPo = _newNtk->getPo(ithPo);
 
-    // fault analysis; for the PO
-    
-
     // match cuts
     matchCutsAtGatePair(oldPo->getFanin(0), newPo->getFanin(0), ithPo);
 }
@@ -117,65 +178,31 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
 
     // 1. collect the cuts of the same NPN class
     // here we store the key as <cutsize>_<NPN class>, for convience of sorting by cut size
-    map<string, vector<gv::cir::EcoCut*>, greater<string>> oldNPNClass2Cuts;
-    map<string, vector<gv::cir::EcoCut*>, greater<string>> newNPNClass2Cuts;
-    // cout << "old cuts : " << endl;
-    for(auto cut : oldPoCuts) {
-        // cut->reportCut();
-        auto[npnClass, match] = getNPNHash(cut);
-        npnClass = to_string(cut->getCutSize()) + "_" + npnClass;
-        oldNPNClass2Cuts[npnClass].push_back(cut);
-    }
-    // cout << "new cuts : " << endl;
-    for(auto cut : newPoCuts) {
-        // cut->reportCut();
-        auto[npnClass, match] = getNPNHash(cut);
-        npnClass = to_string(cut->getCutSize()) + "_" + npnClass;
-        newNPNClass2Cuts[npnClass].push_back(cut);
-    }
+    unordered_map<string, vector<gv::cir::EcoCut*>> oldNPNClass2Cuts;
+    unordered_map<string, vector<gv::cir::EcoCut*>> newNPNClass2Cuts;
 
+    // compute the cuts signature and sort by #merged gates
+    computeCutsSignatures(oldNPNClass2Cuts, oldPoCuts);
+    computeCutsSignatures(newNPNClass2Cuts, newPoCuts);
+
+    // sort the NPN classes by
+    // 1. size of union of merged gates in the cuts in the NPN class
+    // 2. #vars of the NPN class (i.e. the cut size in the NPN class)
+    auto sortedOldNPNClass = sortNPNClass(oldNPNClass2Cuts);
+    auto sortedNewNPNClass = sortNPNClass(newNPNClass2Cuts);
 
     bool foundMatch = false;
     // enumerate by old npn class
-    for(auto&[oldNPNClass, oldCuts] : oldNPNClass2Cuts) {
+    for(const auto& oldNPNClass  : sortedOldNPNClass) {
+        auto oldCuts = oldNPNClass2Cuts.at(oldNPNClass);
         if(!newNPNClass2Cuts.count(oldNPNClass)) continue;
         if(foundMatch) break;
         auto& newCuts = newNPNClass2Cuts.at(oldNPNClass);
 
-        // sort the cut by the number of merged gates
-        for(auto& oldCut : oldCuts) {
-            unsigned numMerged = 0;
-            for(const auto& leaf : oldCut->getLeaves()) {
-                if(isMerged(leaf))
-                    ++numMerged;
-            }
-            oldCut->setNumMergedLeaves(numMerged);
-        }
-
-        for(auto& newCut : newCuts) {
-            unsigned numMerged = 0;
-            for(const auto& leaf : newCut->getLeaves()) {
-                
-                if(isMerged(leaf)) {
-                    ++numMerged;
-                }
-            }
-            newCut->setNumMergedLeaves(numMerged);
-        }
-        sort(oldCuts.begin(), oldCuts.end(), [](gv::cir::EcoCut* a, gv::cir::EcoCut* b) {
-            return a->getNumMergedLeaves() > b->getNumMergedLeaves();
-        });
-        sort(newCuts.begin(), newCuts.end(), [](gv::cir::EcoCut* a, gv::cir::EcoCut* b) {
-            return a->getNumMergedLeaves() > b->getNumMergedLeaves();
-        });
         cout << "old cuts size : " << oldCuts.size() << " new cuts size : " << newCuts.size() << endl;
         for(auto& oldCut : oldCuts) {
             for(auto& newCut : newCuts) {
                 foundMatch = match2Cuts(oldCut, newCut, ithPo);
-                // if(foundMatch) {
-                //     oldCut->reportCut();
-                //     newCut->reportCut();
-                // }
                 if(foundMatch) break;
             }
             if(foundMatch) break;
@@ -185,6 +212,24 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
     // if there is no rp pair found, fix it from po
     if(!foundMatch)
         addRPPair(oldGate, newGate, _oldNtk->getPo(ithPo), false, ithPo);
+}
+
+// compute the signature and sort them by NPN class for the provided cuts
+void
+EcoMgr::computeCutsSignatures(unordered_map<string, vector<gv::cir::EcoCut*>>& NPNClass2Cuts, vector<gv::cir::EcoCut *>& cuts) {
+    for(auto& cut : cuts) {
+        auto[npnClass, match] = getNPNHash(cut);
+        npnClass = npnClass;
+        NPNClass2Cuts[npnClass].push_back(cut);
+        unsigned numMerged = 0;
+        for(const auto& leaf : cut->getLeaves()) {
+            if(isMerged(leaf))
+                ++numMerged;
+        }
+        cut->setNumMergedLeaves(numMerged);
+    }
+    for(auto&[NPNClass, NPNCuts] : NPNClass2Cuts)
+        sortCutsByNumMergedGates(NPNCuts);
 }
 
 // use the bits of the size_t to control each constant assignment bits

@@ -75,6 +75,7 @@ public:
   void readDesigns(const string& oldDesignName, const string& newDesignName);
   void doFraig(); // conduct abc fraig on the designs
   void doMatching(unsigned kFeassible);
+  void doRecycle();
 
   // set function
   void setOldDesignName(const string& name) { _oldDesignName = name; }
@@ -89,6 +90,7 @@ public:
   // ---------------------
   // general matching function
   void matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo = -1); // match the cuts at the gate pair
+  void computeCutsSignatures(unordered_map<string, vector<gv::cir::EcoCut*>>& NPNClass2Cuts, vector<gv::cir::EcoCut *>& cuts);
   bool match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo = -1);
   vector<size_t>  getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut);
   vector<size_t> simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vector<int>& comb);
@@ -99,6 +101,8 @@ public:
   // score computation functions
   // ---------------------
   void sortCandCutsByScore(); // collect the enumerated cuts and compute their scores
+  void sortCutsByNumMergedGates(vector<gv::cir::EcoCut*>& cuts);
+  vector<string> sortNPNClass(unordered_map<string, vector<gv::cir::EcoCut*>>& newNPNClass2Cuts);
 
   // signature computation functions
 
@@ -169,6 +173,10 @@ public:
   bool isNeedToDup(gv::cir::EcoGate* g) { return _gatesNeedToDup.count(g); }
   bool isFixedToAnotherGate(gv::cir::EcoGate* g);
   bool isFixedToItSelf(gv::cir::EcoGate* g);
+
+  // recycle
+  void collectFloatingGates();
+  void matchFloatingGates();
   
   // resynthesis circuit
   void reSynsethesis(const string& oldDir, const string& newDir);
@@ -231,6 +239,9 @@ private:
 
   // record how many patterns has been simmed
   unsigned _nSim;
+
+  // recycle
+  unordered_set<gv::cir::EcoGate*> _floatingGates;
 };
 
 }
