@@ -103,7 +103,7 @@ EcoMgr::doFraig() {
       _oldNtk->setGateByAbcNode(Abc_ObjRegular(pNode->pCopy), gate);
     }
   }
-// cout << "-----" << endl;
+
   Abc_NtkForEachObj( pNtkNew, pNode, i ) {
     auto gates = _newNtk->getGateByAbcNode(Abc_ObjRegular(pNode));
     for(const auto& gate : gates) {
@@ -199,10 +199,81 @@ EcoMgr::doFraig() {
     _mergeTable[oldGate].insert(newGate);
     _mergeTable[newGate].insert(oldGate);
   }
-  // for(size_t i=0; i<_oldNtk->getNumPos(); i++)
-  //   dfs(_oldNtk->getPo(i));
-  // for(size_t i=0; i<_newNtk->getNumPos(); i++)
-  //   dfs(_newNtk->getPo(i));
+
+  markMergeFrontier();
+}
+
+// mark the gates that are strictly under the merge frontier
+void
+EcoMgr::markMergeFrontier() {
+  unordered_set<gv::cir::EcoGate*> underMergedFrontierSet;
+  unordered_set<gv::cir::EcoGate*> removeUnderMergedFrontierSet;
+  for(unsigned i=0; i<_oldNtk->getNumGates(); ++i) {
+        auto g = _oldNtk->getGate(i);
+        
+        if(isMerged(g))
+            underMergedFrontierSet.insert(g);
+        else
+            continue;
+        
+        queue<gv::cir::EcoGate*> q;
+        gv::cir::EcoGate::setGlobalTrav();
+        q.push(g);
+
+        // mark merged gate's fanin cone as under merged frontier
+        while(!q.empty()) {
+            auto cur = q.front();
+            q.pop();
+            if(cur->isGlobalTrav()) continue;
+            cur->setToGlobalTrav();
+
+            underMergedFrontierSet.insert(cur);
+
+            // traverse its children
+            for(unsigned j=0; j<cur->getNumFanins(); ++j) {
+                auto fanin = cur->getFanin(j);
+                if(!fanin->isGlobalTrav())
+                    q.push(fanin);
+            }
+        }
+    }
+
+    removeUnderMergedFrontierSet = underMergedFrontierSet;
+    gv::cir::EcoGate::setGlobalTrav();
+    for(unsigned i=0; i<_oldNtk->getNumPos(); ++i) {
+      auto po = _oldNtk->getPo(i)->getFanin(0);
+      queue<gv::cir::EcoGate*> q;
+      q.push(po);
+
+      // mark merged gate's fanin cone as under merged frontier
+      while(!q.empty()) {
+        auto cur = q.front();
+        q.pop();
+        if(cur->isGlobalTrav()) continue;
+        cur->setToGlobalTrav();
+
+
+        // traverse its children
+        for(unsigned j=0; j<cur->getNumFanins(); ++j) {
+          auto fanin = cur->getFanin(j);
+          if(!fanin->isGlobalTrav())
+            q.push(fanin);
+          if(underMergedFrontierSet.count(cur)) {
+            cout << "dbg : " << cur->getGateFullName() << " " << fanin->getGateFullName() << endl;
+            removeUnderMergedFrontierSet.erase(fanin);
+          }
+        }
+      }
+    }
+
+    for(const auto& g : underMergedFrontierSet) {
+      if(!removeUnderMergedFrontierSet.count(g)) {
+        cout << "ppppp " << g->getGateFullName() << endl;
+        addUnderMergeFrontierSet(g);
+      }
+      else
+        cout << "bbbb " << g->getGateFullName() << endl;
+    }
 }
 
 // get the aig of merged aig and pole

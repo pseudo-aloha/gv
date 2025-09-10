@@ -504,7 +504,7 @@ EcoNtk::abcReadFile() {
 }
 
 void
-EcoNtk::genConnection() {
+EcoNtk::genConnection(bool reducePi) {
   for(auto& gate : GateVec) {
     for(auto& faninName : gate->_faninNames) {
       EcoGate* fanin = getGateByName(faninName);
@@ -515,16 +515,17 @@ EcoNtk::genConnection() {
       gate->_fanins.push_back(fanin);
     }
   }
-  sortGatesInTopoOrder();
+  sortGatesInTopoOrder(reducePi);
 }
 
 // sort the gates in GateVec by topological order
 void
-EcoNtk::sortGatesInTopoOrder() {
+EcoNtk::sortGatesInTopoOrder(bool reducePi) {
   vector<int> inOrder(getNumGates(), 0); // record the number of fanin of the gate
   unordered_map<gv::cir::EcoGate*, unordered_set<gv::cir::EcoGate*>> inOrderMap;
   vector<vector<EcoGate*>> fanouts(getNumGates());
   vector<EcoGate*> sortedGateVec;
+  vector<EcoGate*> newPiList;
   queue<EcoGate*> q;
 
   // check the fanins of each gate
@@ -538,10 +539,32 @@ EcoNtk::sortGatesInTopoOrder() {
       inOrderMap[gate].insert(fanin);
     }
 
+    // if(inOrder[i] == 0) {
+    //   q.push(gate);
+    // }
+  }
+
+  for(unsigned i=0; i<getNumGates(); ++i) {
+    auto gate = getGate(i);
     if(inOrder[i] == 0) {
+      if(reducePi && gate->isPi() && fanouts.at(i).size() == 0) {
+        cout << "reducing pi " << gate->getGateFullName() << endl;
+        // auto position = std::find(_PIList.begin(), _PIList.end(), gate);
+        // if (position != _PIList.end()){
+        //     _PIList.erase(position);
+        //   cout << "ddd " << gate->getGateFullName() << " " << (*position)->getGateFullName() << endl;
+        //   delete gate;
+        // }
+        continue;
+      }
+      if(gate->isPi())
+        newPiList.push_back(gate);
+
       q.push(gate);
     }
   }
+
+  _PIList = newPiList;
 
   while(!q.empty()) {
     auto cur = q.front();
@@ -652,11 +675,11 @@ EcoNtk::parsePI(const string& dir) {
 }
 
 void
-EcoNtk::readNtkFile(const string& dir) {
+EcoNtk::readNtkFile(const string& dir, bool reducePi) {
   parsePI(dir);
   parsePrimitiveGates(dir);
   parsePO(dir);
-  genConnection();
+  genConnection(reducePi);
   rewriteDesign(dir); // rewrite the design format so that abc can read it
   abcReadFile(); // read the rewrited file using abc
   // for(auto& gate : GateVec) {
@@ -715,6 +738,7 @@ EcoNtk::writeNtkVerilog(const string& fileName) {
           f << endl;
     }
     f << ");" << endl << endl;
+    f << "// num po : " << getNumPos() << endl;
     f << "output ";
     for(unsigned i=0; i<getNumPos(); ++i) {
         if((i + 1) % 10 == 0) {
@@ -726,7 +750,7 @@ EcoNtk::writeNtkVerilog(const string& fileName) {
             f << ", ";
     }
     f << ";" << endl << endl;
-    
+    f << "// num pi : " << getNumPis() << endl;
     if(getNumPis() > 0) {
       f << "input ";
       for(unsigned i=0; i<getNumPis(); ++i) {
@@ -741,12 +765,13 @@ EcoNtk::writeNtkVerilog(const string& fileName) {
       f << ";" << endl << endl;
     }
 
-    f << "wire ";
     vector<string> wireVec;
     for(unsigned i=0; i<getNumGates(); ++i) {
       if(getGate(i)->isConstGate()) continue;
       wireVec.push_back(getGate(i)->getGateName());
     }
+    f << "// num wire : " << wireVec.size() << endl;
+    f << "wire ";
     for(unsigned i=0; i<wireVec.size(); ++i) {
         if((i + 1) % 10 == 0) {
             f << ";" << endl;
@@ -756,11 +781,14 @@ EcoNtk::writeNtkVerilog(const string& fileName) {
         if(i < wireVec.size() - 1 && (i + 2) % 10 != 0)
             f << ", ";
     }
+    int nBufNot = 0;
     f << ";" << endl << endl;
     for(unsigned i=0; i<getNumGates(); ++i) {
         auto g = getGate(i);
         if(g->isPiOrConst()) continue; // no need to write pi/const gates
         f << g->getGateTypeName() << " (" << g->getGateName() << ", ";
+        if(g->getGateType() == gv::cir::EcoGate::ECO_BUF_GATE || g->getGateType() == gv::cir::EcoGate::ECO_NOT_GATE)
+          nBufNot++;
         for(unsigned j=0; j<g->getNumFanins(); ++j) {
             auto fanin = g->getFanin(j);
             f << fanin->getGateName();
@@ -770,6 +798,7 @@ EcoNtk::writeNtkVerilog(const string& fileName) {
         f << ");" << endl;
     }
     f << endl << "endmodule" << endl;
+    f << "//num buf/not : " << nBufNot << endl;
     f.close();
 }
 
@@ -782,13 +811,14 @@ EcoNtk::computeCadContestCost() {
   int totalCost = 0;
 
   for(const auto& g : GateVec) {
-    if(g->isPiOrConst()) continue; // pi and const gate will be counted in fanin
+    if(g->isConstGate()) continue; // const gate will be counted in fanin
     wireNames.insert(g->getGateName());
     for(unsigned i=0; i<g->getNumFanins(); ++i) {
       auto fanin = g->getFanin(i);
       wireNames.insert(fanin->getGateName());
     }
-    gateCost += (int)g->getNumFanins() - 2;
+    if(!g->isPiOrConst())
+      gateCost += (int)g->getNumFanins() - 2;
   }
 
   wireCost = wireNames.size();

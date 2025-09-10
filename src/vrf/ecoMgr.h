@@ -48,14 +48,12 @@ private:
 
 class EcoRPInfo {
 public:
-  EcoRPInfo(gv::cir::EcoGate* mappedGate, gv::cir::EcoGate* fixedFanout, bool mappedPole) : _mappedGate(mappedGate), _fixedFanout(fixedFanout), _mappedPole(mappedPole) {}
+  EcoRPInfo(gv::cir::EcoGate* mappedGate, bool mappedPole) : _mappedGate(mappedGate), _mappedPole(mappedPole) {}
   gv::cir::EcoGate* getMappedGate() { return _mappedGate; }
-  gv::cir::EcoGate* getFixedFanout() { return _fixedFanout; }
   bool getMappedPole() { return _mappedPole; }
   
 private:
   gv::cir::EcoGate* _mappedGate;
-  gv::cir::EcoGate* _fixedFanout;
   bool _mappedPole;
 };
 
@@ -89,9 +87,9 @@ public:
   // matching functions
   // ---------------------
   // general matching function
-  void matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo = -1); // match the cuts at the gate pair
+  unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo = -1); // match the cuts at the gate pair
   void computeCutsSignatures(unordered_map<string, vector<gv::cir::EcoCut*>>& NPNClass2Cuts, vector<gv::cir::EcoCut *>& cuts);
-  bool match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo = -1);
+  pair<bool, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>>> match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo = -1);
   vector<size_t>  getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut);
   vector<size_t> simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vector<int>& comb);
   bool checkMatchValid(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int outputInv, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch); // function to check that if the matching is indeed valid
@@ -123,6 +121,9 @@ public:
   pair<gv::cir::EcoGate*, bool> getOneMergedGate(gv::cir::EcoGate* g, bool pole); // the first arguement is the gate we want to find merged gate, the second arguement is the preferred pole of the gate.
   bool isMerged(gv::cir::EcoGate* g) { return (_mergeTable.count(g) || _invMergeTable.count(g)); }
   unsigned getGatesEqStatus(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate);
+  void addUnderMergeFrontierSet(gv::cir::EcoGate* g) { _underMergeFrontierSet.insert(g); }
+  bool isUnderMergeFrontierSet(gv::cir::EcoGate* g)  { _underMergeFrontierSet.count(g);  }
+  void markMergeFrontier();
 
   // get the aig of merged aig and pole
   pair<gv::cir::CirGate*, bool> getMergedAig(gv::cir::EcoGate* g);
@@ -143,7 +144,7 @@ public:
   double getCosineSimilarity(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, unsigned poId);
 
   // Record RP  Pair
-  void addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir::EcoGate* fixedFanout, bool inv, unsigned fixedPo);
+  void addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, bool inv, unsigned fixedPo);
   void reportRPPair();
   
   // ---------------------
@@ -222,6 +223,7 @@ private:
   // record the merge information
   unordered_map<gv::cir::EcoGate*, unordered_set<gv::cir::EcoGate*>> _mergeTable;
   unordered_map<gv::cir::EcoGate*, unordered_set<gv::cir::EcoGate*>> _invMergeTable;
+  unordered_set<gv::cir::EcoGate*>                                   _underMergeFrontierSet; // record the gates that are strictly under the merge frontier
 
   // record the match information
   unordered_map<gv::cir::EcoGate*, vector<pair<gv::cir::EcoGate*, bool>>> _matchTable;

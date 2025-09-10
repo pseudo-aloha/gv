@@ -42,7 +42,7 @@ EcoMgr::getGatesEqStatus(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) {
 // add the RP pair
 // gate a fixed to gate b can fix fanout #i
 void
-EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir::EcoGate* fixedFanout, bool inv, unsigned fixedPo) {
+EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, bool inv, unsigned fixedPo) {
     cout << "mermermer : " << oldGate->getGateFullName() << " " << newGate->getGateFullName() << " " << inv << endl;
     // if the rp gate is merged to the old gate and the pole also matches, we don't have to add it in to rp pairs
     if(isMerged(oldGate)) {
@@ -50,7 +50,7 @@ EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir:
         auto[mergedAig, mergedPole] = getMergedAig(oldGate);
         if(mergedAig == newGate->getAigNode() && ((mergedPole ^ newGate->getAigNodeInv() ^ inv) == false)) {
             if(!_rpTable.at(fixedPo).count(oldGate)) {
-                EcoRPInfo* pRPInfo = new EcoRPInfo(oldGate, fixedFanout, false);
+                EcoRPInfo* pRPInfo = new EcoRPInfo(oldGate, false);
                 assert(!_rpTable.at(fixedPo).count(oldGate));
                 _rpTable.at(fixedPo)[oldGate] = pRPInfo;
             }
@@ -59,7 +59,7 @@ EcoMgr::addRPPair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, gv::cir:
     }
     // if the oldgate is not yet be fixed to another gate, simply add it
     if(!_rpTable.at(fixedPo).count(oldGate)) {
-        EcoRPInfo* pRPInfo = new EcoRPInfo(newGate, fixedFanout, inv);
+        EcoRPInfo* pRPInfo = new EcoRPInfo(newGate, inv);
         assert(!_rpTable.at(fixedPo).count(oldGate));
         _rpTable.at(fixedPo)[oldGate] = pRPInfo;
     }
@@ -161,19 +161,54 @@ EcoMgr::doOutputSideMatching() {
 // do the matching for one po
 void
 EcoMgr::matchOnePo(unsigned ithPo) {
-    gv::cir::EcoGate* oldPo = _oldNtk->getPo(ithPo);
-    gv::cir::EcoGate* newPo = _newNtk->getPo(ithPo);
+    gv::cir::EcoGate* oldPo = _oldNtk->getPo(ithPo)->getFanin(0);
+    gv::cir::EcoGate* newPo = _newNtk->getPo(ithPo)->getFanin(0);
 
     // match cuts
-    matchCutsAtGatePair(oldPo->getFanin(0), newPo->getFanin(0), ithPo);
+    // recursive matching, until merged frontier is reached
+    unordered_set<gv::cir::EcoGate*> visited;
+    queue<pair<gv::cir::EcoGate*, gv::cir::EcoGate*>> q;
+    unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> candRp;
+    
+    // use po as initial rp point
+    q.push(make_pair(oldPo, newPo));
+    candRp[oldPo] = make_pair(newPo, false);
+
+    while(!q.empty()) {
+        auto[oldGate, newGate] = q.front();
+        q.pop();
+        cout << "matching_pair: " << oldGate->getGateFullName() << " " << newGate->getGateFullName() << endl;
+        if(visited.count(oldGate) || isUnderMergeFrontierSet(oldGate)) break;
+        visited.insert(oldGate);
+
+        auto rp = matchCutsAtGatePair(oldPo, newPo, ithPo);
+
+        if(!rp.empty()) {
+            candRp.erase(oldGate);
+            for(auto[og, ngInfo] : rp) {
+                candRp[og] = ngInfo;
+                auto[ng, inv] = ngInfo;
+                q.push(make_pair(og, ng));
+            }
+        }
+        break;
+
+        // if the gate is visited before or merged frontier is reached, stop matching
+        // if(isMerged(oldGate)) break;
+    }
+
+    for(auto[og, ngInfo] : candRp) {
+        auto[ng, inv] = ngInfo;
+        addRPPair(og, ng, inv, ithPo);
+    }
 }
 
-// match the cuts at the gate pair
-void
+// match the cuts at the gate pair (now used for po matching)
+unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>>
 EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo) {
     auto oldPoCuts = _oldNtk->getGateCuts(oldGate);
     auto newPoCuts = _newNtk->getGateCuts(newGate);
-    cout << "num old po cuts " << oldPoCuts.size() << " " << " num new po cuts " << newPoCuts.size() << endl;
+    // cout << "num old po cuts " << oldPoCuts.size() << " " << " num new po cuts " << newPoCuts.size() << endl;
     // sort the cuts by their NPN class
 
     // 1. collect the cuts of the same NPN class
@@ -202,16 +237,19 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
         cout << "old cuts size : " << oldCuts.size() << " new cuts size : " << newCuts.size() << endl;
         for(auto& oldCut : oldCuts) {
             for(auto& newCut : newCuts) {
-                foundMatch = match2Cuts(oldCut, newCut, ithPo);
-                if(foundMatch) break;
+                auto[matchSucess, match] = match2Cuts(oldCut, newCut, ithPo);
+                if(matchSucess)
+                    return match;
             }
-            if(foundMatch) break;
         }
     }
 
     // if there is no rp pair found, fix it from po
-    if(!foundMatch)
-        addRPPair(oldGate, newGate, _oldNtk->getPo(ithPo), false, ithPo);
+    // addRPPair(oldGate, newGate, false, ithPo);
+    unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> emptyMatch;
+    // singleMatch[oldGate] = make_pair(newGate, false);
+
+    return emptyMatch;
 }
 
 // compute the signature and sort them by NPN class for the provided cuts
@@ -744,8 +782,9 @@ getFixedFanout(gv::cir::EcoCut* oldCut, unordered_map<gv::cir::EcoGate*, pair<gv
 
 // match the 2 cuts and record the RP pair if possible
 // ith po is given when matching a particular po
-bool
+pair<bool, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>>>
 EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) {
+    unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> candRPPair;
     vector<gv::cir::EcoGate*> oldLeaves;
     vector<gv::cir::EcoGate*> newLeaves;
 
@@ -807,14 +846,13 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
     }
 
     // if no valid match is found, return false
-    if(bestScore < 0) return false;
+    if(bestScore < 0) return make_pair(false, candRPPair);
     
     
     // find a match way that can maximally match the merged gates
     auto[outputMatch, inputMatch] = _pNpnHash->decodeEncodedSizeTMatch(candMatch, oldCut->getCutSize());
-    unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> candRPPair;
     cout << "output match : " << outputMatch << endl;
-    if(outputMatch) return false; // we don't want invert at po, TODO : check if we have to change to NPN
+    if(outputMatch) return make_pair(false, candRPPair); // we don't want invert at po, TODO : check if we have to change to NPN
     for(int i=0; i<inputMatch.size(); ++i) {
         auto oldGate = oldLeaves.at(i);
         auto newGate = newLeaves.at(inputMatch[i] / 2);
@@ -845,6 +883,14 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
         //     isNewGateInvBuf = (newGate->getGateType() == gv::cir::EcoGate::ECO_BUF_GATE || newGate->getGateType() == gv::cir::EcoGate::ECO_NOT_GATE);
         // }
 
+        if(isUnderMergeFrontierSet(oldGate)) {
+            auto eqStatus = getGatesEqStatus(oldGate, newGate);
+            if(!((eqStatus == ECO_GATES_INV_EQ && inv) || (eqStatus == ECO_GATES_EQ && !inv))) {
+                candRPPair.clear();
+                return make_pair(false, candRPPair);
+            }
+        }
+
         candRPPair[oldGate] = {newGate, inv};
         cout << "fanin match : " << oldGate->getGateFullName() << " " << newGate->getGateFullName() << " " << inv << endl;
         
@@ -860,8 +906,8 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
         auto[newGate, inv] = matchInfo;
 
         // get the fixed fanout gate
-        unordered_map<gv::cir::EcoGate*, gv::cir::EcoGate*> fixedFanout;
-        getFixedFanout(oldCut, candRPPair, fixedFanout);
+        // unordered_map<gv::cir::EcoGate*, gv::cir::EcoGate*> fixedFanout;
+        // getFixedFanout(oldCut, candRPPair, fixedFanout);
 
         // cout << "old gate : " << oldGate->getGateFullName() << endl;
         // oldCut->reportCut();
@@ -869,7 +915,7 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
             // cout << "gate " << g->getGateFullName() << " fixed to " << newGate->getGateFullName() << " fixed fanout " << fo->getGateFullName() << " " << inv << endl;
         // }
 
-        addRPPair(oldGate, newGate, fixedFanout.at(oldGate), inv, ithPo);
+        // addRPPair(oldGate, newGate, inv, ithPo);
     }
     cout << "----------------" << endl;
 
@@ -877,7 +923,7 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
     
 
 
-    return true;
+    return make_pair(true, candRPPair);
 }
 
 // compare function for comparing cut score

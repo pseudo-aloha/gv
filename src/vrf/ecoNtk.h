@@ -206,15 +206,15 @@ class EcoNtk {
     ~EcoNtk () { delete cirV; }
     
     // file parsing functions
-    void readNtkFile(const string& dir);
+    void readNtkFile(const string& dir, bool reducePi = false);
     static void rewriteDesign(const string& dir);
     void abcReadFile();
     void parsePrimitiveGates(const string& dir);
     void parsePI(const string& dir);
     void parsePO(const string& dir);
     void parseGate(const vector<string>& line);
-    void genConnection();
-    void sortGatesInTopoOrder();
+    void genConnection(bool reducePi = false);
+    void sortGatesInTopoOrder(bool reducePi = false);
 
     // cut enumeration function
     void enumerateCuts(unsigned k, gv::eco::EcoMgr* pEco); // enumerate k-feasible cuts
