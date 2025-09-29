@@ -56,6 +56,10 @@ namespace cir {
       void setGateId(int id) { _id = id; }
       void setGateName(const string& name) { _gateName = name; }
 
+      // gate merge functions
+      void setIsMerged() { _isMerged = true; } // set that the gate is merged
+      bool isMerged() { return _isMerged; }    // check if the gate is merged
+
       // record the gate belongs to which ntk
       unsigned getGateNtk() { return _gateNtk; }
       bool isInOldCircuit() { return (getGateNtk() == ECO_OLD_NTK); } // check if the gate is in the old circuit
@@ -121,11 +125,14 @@ namespace cir {
     static unsigned _globalTravFlag; // global trav flag, shared by all the gates. Used to check if the gate is traversed (increment it before traversing)
     unsigned _travFlag;
     
-    
+    // circuit that the gate belongs to
     unsigned _gateNtk; // record gate belongs to old/new circuiit or others...
 
     // simulation stuffs
     vector<size_t> _simVals;
+
+    // merge things
+    bool _isMerged;
 };
 
 
@@ -149,6 +156,7 @@ public:
   // get functions
   EcoGate* const getRoot() { return _root; }
   unordered_set<EcoGate*> const getLeaves() { return _leaves; }
+  EcoGate* getLeaf(int i);
   unsigned getCutSize() const { return _leaves.size(); }
   static unsigned getMaxCutsPerNode() { return _maxCutsPerNode; }
   string getSig() { return _signature; }
@@ -178,6 +186,8 @@ private:
   vector<pair<string, bool>> _mgAigSig; // signature that is formed by the ids of merged AIG on the cut  
   string _npnClass; // the npn class of the cut
   unsigned _numMergedLeaves; // used for sorting the score of a cut
+
+  // constant
 };
 
 // Wrap CirMgr, modified to store some extra information for ECO usage

@@ -26,6 +26,29 @@ private:
     unsigned _numMergedGatesUnion;
 };
 
+// iterative method to get combinations
+vector<vector<int>> getCombs(int n, int k) {
+    vector<vector<int>> rets;
+    vector<int> comb;
+
+    for(int i=0; i<k; i++) {
+        comb.push_back(i);
+    }
+    rets.push_back(comb);
+
+    while(1) {
+        int i = k - 1;
+        while(i >= 0 && comb.at(i) >= i + n - k)
+            i--;
+            
+        if(i < 0) break;
+        comb.at(i)++;
+        for(int j=i+1; j<k; j++)
+            comb.at(j) = comb.at(j-1) + 1;
+        rets.push_back(comb);
+    }
+    return rets;
+}
 
 unsigned
 EcoMgr::getGatesEqStatus(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) {
@@ -75,7 +98,6 @@ EcoMgr::reportRPPair() {
     }
 }
 
-// sort the cuts by the number of the merged gates
 void
 EcoMgr::sortCutsByNumMergedGates(vector<gv::cir::EcoCut*>& cuts) {
     sort(cuts.begin(), cuts.end(), [](gv::cir::EcoCut* a, gv::cir::EcoCut* b) {
@@ -83,18 +105,52 @@ EcoMgr::sortCutsByNumMergedGates(vector<gv::cir::EcoCut*>& cuts) {
     });
 }
 
+// sort the cuts by the number of the merged gates
+void
+EcoMgr::sortCutsByNumMergedGates(vector<pair<gv::cir::EcoCut*, ConstInsertList>>& cuts) {
+    sort(cuts.begin(), cuts.end(), [](pair<gv::cir::EcoCut*, ConstInsertList> a, pair<gv::cir::EcoCut*, ConstInsertList> b) {
+        auto[aCut, aConst] = a;
+        auto[bCut, bConst] = b;
+        int aMergedNum = aCut->getNumMergedLeaves();
+        int bMergedNum = bCut->getNumMergedLeaves();
+        int prevA = aMergedNum;
+        int prevB = bMergedNum;
+        if(!aConst.empty() || !bConst.empty()) {
+            if(!aConst.empty()) {
+                for(const auto& aCon : aConst) {
+                    int constAssignedLeafIdx = aCon / 2;
+                    auto constAssignedLeaf = aCut->getLeaf(constAssignedLeafIdx);
+                    if(constAssignedLeaf->isMerged() && !constAssignedLeaf->isConstGate())
+                        --aMergedNum;
+                }
+            }
+            if(!bConst.empty()) {
+                for(const auto& bCon : bConst) {
+                    int constAssignedLeafIdx = bCon / 2;
+                    auto constAssignedLeaf = bCut->getLeaf(constAssignedLeafIdx);
+                    if(constAssignedLeaf->isMerged() && !constAssignedLeaf->isConstGate())
+                        --bMergedNum;
+                }
+            }
+        }
 
+        assert(aMergedNum >= 0 && bMergedNum >= 0);
+        return (aMergedNum > bMergedNum);
+    });
+}
+
+// sort the NPN class by the size of union of merged gates
 vector<string>
-EcoMgr::sortNPNClass(unordered_map<string, vector<gv::cir::EcoCut*>>& NPNClass2Cuts) {
+EcoMgr::sortNPNClass(unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>>& NPNClass2Cuts) {
     vector<string> sortedNPNClass;
     vector<NPNClassSignature*> sortedNPNClassSignatures;
     
-    for(auto&[NPNClass, cuts] : NPNClass2Cuts) {
-        unsigned cutSize = cuts.front()->getCutSize();
+    for(auto&[NPNClass, cutsInfo] : NPNClass2Cuts) {
+        unsigned cutSize = cutsInfo.front().first->getCutSize();
         
         sortedNPNClass.push_back(NPNClass);
         unordered_set<gv::cir::EcoGate*> mergedGateSt;
-        for(const auto& cut : cuts) {
+        for(const auto&[cut, constInsert] : cutsInfo) {
             for(const auto& leaf : cut->getLeaves()) {
                 if(isMerged(leaf))
                     mergedGateSt.insert(leaf);
@@ -206,18 +262,19 @@ EcoMgr::matchOnePo(unsigned ithPo) {
 // match the cuts at the gate pair (now used for po matching)
 unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>>
 EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo) {
+    // get the cuts rooted at gate pair
     auto oldPoCuts = _oldNtk->getGateCuts(oldGate);
     auto newPoCuts = _newNtk->getGateCuts(newGate);
-    // cout << "num old po cuts " << oldPoCuts.size() << " " << " num new po cuts " << newPoCuts.size() << endl;
+
     // sort the cuts by their NPN class
 
     // 1. collect the cuts of the same NPN class
     // here we store the key as <cutsize>_<NPN class>, for convience of sorting by cut size
-    unordered_map<string, vector<gv::cir::EcoCut*>> oldNPNClass2Cuts;
-    unordered_map<string, vector<gv::cir::EcoCut*>> newNPNClass2Cuts;
+    unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>> oldNPNClass2Cuts;
+    unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>> newNPNClass2Cuts;
 
     // compute the cuts signature and sort by #merged gates
-    computeCutsSignatures(oldNPNClass2Cuts, oldPoCuts);
+    computeCutsSignatures(oldNPNClass2Cuts, oldPoCuts, true);
     computeCutsSignatures(newNPNClass2Cuts, newPoCuts);
 
     // sort the NPN classes by
@@ -229,42 +286,76 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
     bool foundMatch = false;
     // enumerate by old npn class
     for(const auto& oldNPNClass  : sortedOldNPNClass) {
-        auto oldCuts = oldNPNClass2Cuts.at(oldNPNClass);
+        auto oldCutsInfo = oldNPNClass2Cuts.at(oldNPNClass);
         if(!newNPNClass2Cuts.count(oldNPNClass)) continue;
         if(foundMatch) break;
-        auto& newCuts = newNPNClass2Cuts.at(oldNPNClass);
+        auto& newCutsInfo = newNPNClass2Cuts.at(oldNPNClass);
+        cout << "NPN class : " << oldNPNClass << endl;
+        cout << "old cuts size : " << oldCutsInfo.size() << " new cuts size : " << newCutsInfo.size() << endl;
+        // assert(oldCutsInfo.size() * newCutsInfo.size() < 10000);
+        int maxDist = max(oldCutsInfo.size(), newCutsInfo.size()); // pick the larger one
+        int maxIt = 100;
+        int numIt = 0;
+        bool exceededMaxIt = false;
 
-        cout << "old cuts size : " << oldCuts.size() << " new cuts size : " << newCuts.size() << endl;
-        for(auto& oldCut : oldCuts) {
-            for(auto& newCut : newCuts) {
-                auto[matchSucess, match] = match2Cuts(oldCut, newCut, ithPo);
-                if(matchSucess)
-                    return match;
+        for(int dist = 0; dist < maxDist; ++dist) {
+            for(int oldIdx = 0; oldIdx <= dist && oldIdx < oldCutsInfo.size(); ++oldIdx) {
+                auto&[oldCut, oldConstInsert] = oldCutsInfo.at(oldIdx);
+                for(int newIdx = 0; oldIdx + newIdx <= dist && newIdx < newCutsInfo.size(); ++newIdx) {
+                    auto&[newCut, newConstInsert] = newCutsInfo.at(newIdx);
+                    auto[matchSucess, match] = match2Cuts(oldCut, newCut, ithPo);
+                    if(matchSucess)
+                        return match;
+                    if(++numIt >= maxIt) {
+                        exceededMaxIt = true;
+                        break;
+                    }
+                }
+                if(exceededMaxIt) break;
             }
+            if(exceededMaxIt) break;
         }
     }
 
     // if there is no rp pair found, fix it from po
-    // addRPPair(oldGate, newGate, false, ithPo);
     unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> emptyMatch;
-    // singleMatch[oldGate] = make_pair(newGate, false);
 
     return emptyMatch;
 }
 
 // compute the signature and sort them by NPN class for the provided cuts
+// 
 void
-EcoMgr::computeCutsSignatures(unordered_map<string, vector<gv::cir::EcoCut*>>& NPNClass2Cuts, vector<gv::cir::EcoCut *>& cuts) {
+EcoMgr::computeCutsSignatures(unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>>& NPNClass2Cuts, vector<gv::cir::EcoCut *>& cuts, bool doConstInsert) {
     for(auto& cut : cuts) {
+        // handle the original cuts
         auto[npnClass, match] = getNPNHash(cut);
-        npnClass = npnClass;
-        NPNClass2Cuts[npnClass].push_back(cut);
         unsigned numMerged = 0;
+        ConstInsertList constInsertList; // empty for the original cut
+        npnClass = npnClass;
+        NPNClass2Cuts[npnClass].push_back(make_pair(cut, constInsertList));
+
         for(const auto& leaf : cut->getLeaves()) {
             if(isMerged(leaf))
                 ++numMerged;
         }
         cut->setNumMergedLeaves(numMerged);
+
+        // handle constant insertion cuts
+        if(!doConstInsert) continue; // skip if not to do constant insertion
+        unsigned cutSize = cut->getCutSize();
+        for(int nConst = 1; nConst < cutSize / 2; nConst++) {
+            vector<ConstInsertList> combs = getCombs(cutSize, nConst);
+            for(const auto& comb : combs) {
+                for(size_t bitMask = 0; bitMask < pow(2, nConst); bitMask++) {
+                    constInsertList.clear();
+                    for(int bitIdx = 0; bitIdx < nConst; bitIdx++) {
+                        constInsertList.push_back(comb.at(bitIdx) * 2 + (int)getIthBit(bitMask, bitIdx));
+                        NPNClass2Cuts[npnClass].push_back(make_pair(cut, constInsertList));
+                    }
+                }
+            }
+        }
     }
     for(auto&[NPNClass, NPNCuts] : NPNClass2Cuts)
         sortCutsByNumMergedGates(NPNCuts);
@@ -740,46 +831,8 @@ EcoMgr::getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut) {
     return ret;
 }
 
-// only applies on single input gates (i.e. buf/inv)
-// check if the two gates are of the same pole
-bool isSamePole(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate) {
-    // if(oldGate->getNumFanins() == 1 && newGate->getNumFanins() == 1) return false; // make sure that the gates are all single fanin gate
-    
-    // get the gate type enum of both of the gates
-    unsigned oldGateType = oldGate->getGateType();
-    unsigned newGateType = newGate->getGateType();
 
-    return (oldGateType == newGateType);
-}
-
-// recursive traverse and get the fixed fanout of the gate
-void
-getFixedFanoutRec(gv::cir::EcoGate* g, gv::cir::EcoGate* parent, gv::cir::EcoCut* oldCut, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> candRPPair, unordered_map<gv::cir::EcoGate*, gv::cir::EcoGate*>& fixedFanout) {
-    // check if the gate is already traversed
-    if(g->isGlobalTrav()) return;
-    g->setToGlobalTrav();
-    
-    if(candRPPair.count(g)) {
-        if(parent)
-            fixedFanout[g] = parent;
-        else
-            fixedFanout[g] = g;
-        return;
-    }
-
-    for(unsigned i=0; i<g->getNumFanins(); ++i) {
-        auto fanin = g->getFanin(i);
-        getFixedFanoutRec(fanin, g, oldCut, candRPPair, fixedFanout);
-    }
-}
-
-// get the fixed fanout of the gate
-void
-getFixedFanout(gv::cir::EcoCut* oldCut, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>>& candRPPair, unordered_map<gv::cir::EcoGate*, gv::cir::EcoGate*>& fixedFanout) {
-    gv::cir::EcoGate::setGlobalTrav();
-    getFixedFanoutRec(oldCut->getRoot(), nullptr, oldCut, candRPPair, fixedFanout);
-}
-
+// TODO : add contant matching
 // match the 2 cuts and record the RP pair if possible
 // ith po is given when matching a particular po
 pair<bool, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>>>
@@ -862,27 +915,6 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
         bool isNewGateInvBuf = (newGate->getGateType() == gv::cir::EcoGate::ECO_BUF_GATE || newGate->getGateType() == gv::cir::EcoGate::ECO_NOT_GATE);
         bool inv = inputMatch[i] % 2;
 
-        // while(isOldGateInvBuf && isNewGateInvBuf) {
-        //     assert(oldGate->getNumFanins() == 1 && newGate->getNumFanins() == 1);
-        //     cout << "oldgate type : " << oldGate->getGateTypeName() << " newgate type : " << newGate->getGateTypeName() << endl;
-        //     cout << "num fanins : " << oldGate->getNumFanins() << " " << newGate->getNumFanins() << endl;
-        //     if(isSamePole(oldGate, newGate)) {
-        //         while(isSamePole(oldGate, newGate)) {
-        //             oldGate = oldGate->getFanin(0);
-        //             newGate = newGate->getFanin(0);
-        //         }
-        //     }
-        //     else {
-        //         inv ^= true;
-        //         oldGate = oldGate->getFanin(0);
-        //         newGate = newGate->getFanin(0);
-        //         // break;
-        //     }
-            
-        //     isOldGateInvBuf = (oldGate->getGateType() == gv::cir::EcoGate::ECO_BUF_GATE || oldGate->getGateType() == gv::cir::EcoGate::ECO_NOT_GATE);
-        //     isNewGateInvBuf = (newGate->getGateType() == gv::cir::EcoGate::ECO_BUF_GATE || newGate->getGateType() == gv::cir::EcoGate::ECO_NOT_GATE);
-        // }
-
         if(isUnderMergeFrontierSet(oldGate)) {
             auto eqStatus = getGatesEqStatus(oldGate, newGate);
             if(!((eqStatus == ECO_GATES_INV_EQ && inv) || (eqStatus == ECO_GATES_EQ && !inv))) {
@@ -896,32 +928,9 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
         
         // if matching is with respect to a particular, compute the cosine similarity
         if(ithPo >= 0) {    
-            // _oldMatchTable[oldGate] = 
             cout << "cos sim : " << getCosineSimilarity(oldGate, newGate, ithPo) << endl;
         }
     }
-
-    // add the match into rp pair
-    for(auto[oldGate, matchInfo] : candRPPair) {
-        auto[newGate, inv] = matchInfo;
-
-        // get the fixed fanout gate
-        // unordered_map<gv::cir::EcoGate*, gv::cir::EcoGate*> fixedFanout;
-        // getFixedFanout(oldCut, candRPPair, fixedFanout);
-
-        // cout << "old gate : " << oldGate->getGateFullName() << endl;
-        // oldCut->reportCut();
-        // for(auto[g, fo] : fixedFanout) {
-            // cout << "gate " << g->getGateFullName() << " fixed to " << newGate->getGateFullName() << " fixed fanout " << fo->getGateFullName() << " " << inv << endl;
-        // }
-
-        // addRPPair(oldGate, newGate, inv, ithPo);
-    }
-    cout << "----------------" << endl;
-
-    // get the matched inputs and merge from the output side
-    
-
 
     return make_pair(true, candRPPair);
 }

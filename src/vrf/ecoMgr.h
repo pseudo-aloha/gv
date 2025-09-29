@@ -17,6 +17,7 @@ class EcoMgr;
 class EcoCir;
 class NPNHash;
 class EcoRPInfo;
+typedef vector<int> ConstInsertList;
 
 // class to store the cut hashing things
 class EcoNPNHash {
@@ -88,7 +89,7 @@ public:
   // ---------------------
   // general matching function
   unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo = -1); // match the cuts at the gate pair
-  void computeCutsSignatures(unordered_map<string, vector<gv::cir::EcoCut*>>& NPNClass2Cuts, vector<gv::cir::EcoCut *>& cuts);
+  void computeCutsSignatures(unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>>& NPNClass2Cuts, vector<gv::cir::EcoCut *>& cuts, bool doConstInsert = false);
   pair<bool, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>>> match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo = -1);
   vector<size_t>  getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut);
   vector<size_t> simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vector<int>& comb);
@@ -100,7 +101,8 @@ public:
   // ---------------------
   void sortCandCutsByScore(); // collect the enumerated cuts and compute their scores
   void sortCutsByNumMergedGates(vector<gv::cir::EcoCut*>& cuts);
-  vector<string> sortNPNClass(unordered_map<string, vector<gv::cir::EcoCut*>>& newNPNClass2Cuts);
+  void sortCutsByNumMergedGates(vector<pair<gv::cir::EcoCut*, ConstInsertList>>& cuts);
+  vector<string> sortNPNClass(unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>>& newNPNClass2Cuts);
 
   // signature computation functions
 

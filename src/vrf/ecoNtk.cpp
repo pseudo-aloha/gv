@@ -47,7 +47,7 @@ EcoGate::getGateTypeName() {
   }
 }
 
-EcoGate::EcoGate(string gateType, string gateName) : ecoGateVComp(false), ecoGateV(nullptr), _pAbcNode(nullptr), _gateNtk(ECO_NONE_NTK), _id(-1) {
+EcoGate::EcoGate(string gateType, string gateName) : ecoGateVComp(false), ecoGateV(nullptr), _pAbcNode(nullptr), _gateNtk(ECO_NONE_NTK), _id(-1), _isMerged(false) {
   _travFlag = 0;
   _gateName = gateName;
   if(gateType == "const0")
@@ -74,6 +74,15 @@ EcoGate::EcoGate(string gateType, string gateName) : ecoGateVComp(false), ecoGat
     _gateType = ECO_PI_GATE;
   else if(gateType == "po")
     _gateType = ECO_PO_GATE;
+}
+
+EcoGate*
+EcoCut::getLeaf(int i) {
+  auto leafIt = _leaves.begin();
+  for(int j=0; j<i; ++j)
+    leafIt = next(leafIt);
+
+  return *leafIt;
 }
 
 EcoGate::~EcoGate() {

@@ -174,7 +174,10 @@ EcoMgr::doFraig() {
     auto& newGates = newEqClass.at(pEqNode);
     for(const auto&[oldGate, oldGateComp] : oldGates) {
       f << oldGate->getGateFullName() << (oldGateComp ? "(inv)" : "(pos)") << " ";
+      oldGate->setIsMerged();
+      
       for(const auto&[newGate, newGateComp] : newGates) {
+        newGate->setIsMerged();
         if((oldGateComp ^ newGateComp) == 0) {
           _mergeTable[oldGate].insert(newGate);
           _mergeTable[newGate].insert(oldGate);
@@ -259,7 +262,6 @@ EcoMgr::markMergeFrontier() {
           if(!fanin->isGlobalTrav())
             q.push(fanin);
           if(underMergedFrontierSet.count(cur)) {
-            cout << "dbg : " << cur->getGateFullName() << " " << fanin->getGateFullName() << endl;
             removeUnderMergedFrontierSet.erase(fanin);
           }
         }
@@ -268,11 +270,8 @@ EcoMgr::markMergeFrontier() {
 
     for(const auto& g : underMergedFrontierSet) {
       if(!removeUnderMergedFrontierSet.count(g)) {
-        cout << "ppppp " << g->getGateFullName() << endl;
         addUnderMergeFrontierSet(g);
       }
-      else
-        cout << "bbbb " << g->getGateFullName() << endl;
     }
 }
 
