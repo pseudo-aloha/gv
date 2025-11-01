@@ -252,8 +252,10 @@ EcoNPNHash::computeNpnHash() {
 
 // encode function (used to save memory)
 // <unused bits, output inv bit, input1 pos bits (3 bits), input1 inv bit, input2 pos bits (3 bits), input2 inv bit, ...>
+// TODO : need to handle const insertion
+// for a const inserted gate, we set its pos bit to 6 for const0 and 7 for const 1
 size_t
-EcoNPNHash::encodeMatch2SizeT(int outputMatch, vector<int>& inputMatch) {
+EcoNPNHash::encodeMatch2SizeT(int outputMatch, vector<int>& inputMatch, const ConstInsertList& ConstInsert) {
   size_t ret = 0;
   
   // add the output info
@@ -261,21 +263,30 @@ EcoNPNHash::encodeMatch2SizeT(int outputMatch, vector<int>& inputMatch) {
     ret += 1;
 
   for(const auto& m : inputMatch) {
+    // pos info
     ret <<= 3;
+    // if(m < 2 * CONST0SIZETENCODE) {
+    //   cout << "11111" << m << endl;
     ret += m / 2;
-
+    // }
+    // else {
+    //   ret += CONST0SIZETENCODE;
+    // }
+  
+    // neg info
     ret <<= 1;
     if(m % 2 == 1)
       ret += 1;
   }
 
   // this is only to do integrity check
-  // auto[outputMatch_, inputMatch_] = decodeEncodedSizeTMatch(ret, inputMatch.size());
-  // assert(outputMatch == outputMatch_);
-  // for(unsigned i=0; i<inputMatch.size(); ++i) {
-  //   assert(inputMatch.at(i) < 2 * inputMatch.size());
-  //   assert(inputMatch.at(i) == inputMatch_.at(i));
-  // }
+  auto[outputMatch_, inputMatch_] = decodeEncodedSizeTMatch(ret, inputMatch.size());
+  assert(outputMatch == outputMatch_);
+  for(unsigned i=0; i<inputMatch.size(); ++i) {
+    // assert(inputMatch.at(i) < 2 * inputMatch.size());
+    // cout << inputMatch.at(i) << " " << inputMatch_.at(i) << endl;
+    assert(inputMatch.at(i) == inputMatch_.at(i));
+  }
 
   return ret;
 }
@@ -295,6 +306,10 @@ EcoNPNHash::decodeEncodedSizeTMatch(size_t encode, unsigned cutSize) {
     encode >>= 1;
 
     int pos = (encode & posMask);
+    // if(pos < CONST0SIZETENCODE) {
+    //   cout << "222222 " << pos * 2 << endl;
+    //   pos *= 2;
+    // }
     m += pos * 2;
     encode >>= 3;
 
@@ -421,12 +436,23 @@ EcoMgr::getNPNHash(gv::cir::EcoCut* cut) {
 
 // given a cut, compute its NPN class and matching
 pair<string, vector<vector<int>>>
-EcoMgr::getNPNHashFull(gv::cir::EcoCut* cut) {
-  unsigned cutSize = cut->getCutSize(); // get the cut size
+EcoMgr::getNPNHashFull(gv::cir::EcoCut* cut, const ConstInsertList& constInsert) {
+  const unsigned cutSize = cut->getCutSize() - constInsert.size(); // get the cut size, need to subtract constinert size
   size_t cutTT;
+  vector<std::pair<int, bool>> constAssignment; // change the format to pair of int, bool, this might need to fix in the future
+  for(const auto& cInsert : constInsert) {
+    int idx = cInsert / 2;
+    bool val = cInsert % 2;
+    constAssignment.push_back(make_pair(idx, val));
+  }
+
   // get the truth table of the cut
-  if(cut->getRoot()->getGateNtk() == gv::cir::EcoGate::ECO_OLD_NTK)
-    cutTT = _oldNtk->computeCutTT(cut);
+  if(cut->getRoot()->getGateNtk() == gv::cir::EcoGate::ECO_OLD_NTK) {
+    if(!constInsert.empty())
+      cutTT = _oldNtk->computeCutTTWithConst(cut, constAssignment);
+    else
+      cutTT = _oldNtk->computeCutTT(cut);
+  }
   else
     cutTT = _newNtk->computeCutTT(cut);
 

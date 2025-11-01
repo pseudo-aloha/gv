@@ -37,8 +37,14 @@ public:
   pair<string, vector<vector<int>>> getNPNHashFull(size_t cutTT, unsigned simSize);
 
   // encode function (used to save memory)
-  size_t encodeMatch2SizeT(int outputMatch, vector<int>& inputMatch);
+  size_t encodeMatch2SizeT(int outputMatch, vector<int>& inputMatch, const ConstInsertList& ConstInsert = {});
   pair<int, vector<int>> decodeEncodedSizeTMatch(size_t encode, unsigned cutSize);
+
+  // used to indicate const0/const1 in size_t encode
+  enum ConstInsertSizetEncode {
+    CONST0SIZETENCODE = 6,
+    CONST1SIZETENCODE = 7
+  };
 
 private:
   unsigned _cutSizeFrom; // from which we comute the NPN-eq class
@@ -88,21 +94,21 @@ public:
   // matching functions
   // ---------------------
   // general matching function
-  unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo = -1); // match the cuts at the gate pair
+  unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo = -1, bool doConstInsert = false); // match the cuts at the gate pair
   void computeCutsSignatures(unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>>& NPNClass2Cuts, vector<gv::cir::EcoCut *>& cuts, bool doConstInsert = false);
-  pair<bool, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>>> match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo = -1);
-  vector<size_t>  getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut);
-  vector<size_t> simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vector<int>& comb);
+  pair<bool, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>>> match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, const ConstInsertList& ConstInsert, int ithPo = -1);
+  vector<size_t>  getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, const ConstInsertList& ConstInsert);
+  vector<size_t> simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vector<int>& comb, const ConstInsertList& ConstInsert);
   bool checkMatchValid(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int outputInv, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch); // function to check that if the matching is indeed valid
-  bool checkMatchValidWithConst(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int outputInv, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch, unordered_map<gv::cir::EcoGate*, bool>& constAssignmentOld, unordered_map<gv::cir::EcoGate*, bool>& constAssignmentNew);
+  bool checkMatchValidWithConst(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int outputInv, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch, const ConstInsertList& constInsertOld, const ConstInsertList& constInsertNew);
   
   // ---------------------
   // score computation functions
   // ---------------------
-  void sortCandCutsByScore(); // collect the enumerated cuts and compute their scores
+  // void sortCandCutsByScore(); // collect the enumerated cuts and compute their scores
   void sortCutsByNumMergedGates(vector<gv::cir::EcoCut*>& cuts);
   void sortCutsByNumMergedGates(vector<pair<gv::cir::EcoCut*, ConstInsertList>>& cuts);
-  vector<string> sortNPNClass(unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>>& newNPNClass2Cuts);
+  vector<string> sortNPNClass(const unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>>& newNPNClass2Cuts);
 
   // signature computation functions
 
@@ -136,7 +142,7 @@ public:
 
   // get NPN class
   pair<string, vector<int>> getNPNHash(gv::cir::EcoCut* cut);
-  pair<string, vector<vector<int>>> getNPNHashFull(gv::cir::EcoCut* cut);
+  pair<string, vector<vector<int>>> getNPNHashFull(gv::cir::EcoCut* cut, const ConstInsertList& constInsert = {});
 
   // simulation methods
   void doRandomSim();

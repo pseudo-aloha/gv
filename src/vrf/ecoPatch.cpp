@@ -77,11 +77,13 @@ EcoMgr::getDupGateName(gv::cir::EcoGate* g, unsigned ithPo) {
         auto mappedGate = pEcoRpInfo->getMappedGate();
         auto mappedPole = pEcoRpInfo->getMappedPole();
         _usedNewGate.insert(mappedGate);
+        // is fixed to itself
         if(g == mappedGate && !mappedPole) {
             if(getDupedMergedGate(g)) {
                 auto dupedMergedGate = getDupedMergedGate(g);
                 return dupedMergedGate->getGateName();
             }
+            createOrGetPatchGate("pi", g->getGateName()); // need to add the gate to the fanin of the patch
             return g->getGateName();
         }
         if(mappedPole) {
@@ -922,12 +924,14 @@ EcoMgr::generatePatchForIthPo(unsigned i) {
         // check if the gate has been traversed
         if(cur->isGlobalTrav()) continue;
         cur->setToGlobalTrav();
+        cout << "visited old gate : " << cur->getGateFullName() << endl;
 
         // dup the gate for this po
         string dupGateName = getDupGateName(cur, i);
         if(rpForIthPo.count(cur)) {
             continue;
         }
+        cout << "ddd " << dupGateName << endl;
         auto dupGate = createOrGetPatchGate(cur->getGateTypeName(), dupGateName);
 
         for(unsigned j=0; j<cur->getNumFanins(); ++j) {
@@ -1101,16 +1105,13 @@ EcoMgr::applyNCheckPatch(const string& patchName) {
     }
 
     // find the rewired Pi's in patch circuit
-    for(unsigned i=0; i<patchNtk->getNumPis(); ++i) {
-        auto pi = patchNtk->getPi(i);
-        auto piName = pi->getGateName();
-        if(piName.size() > 3) {
-            auto suffix = piName.substr(piName.size() - 3, 3);
-            if(suffix == "_in" && oldPiNames.count(strip_in(piName))) {
-                rewiredPiInPatch.insert(piName);
-                rewiredPiInOldNtk.insert(strip_in(piName));
-                renameRewiredPi[strip_in(piName)] = strip_in(piName) + "_out";
-            }
+    for(unsigned i=0; i<patchNtk->getNumPos(); ++i) {
+        auto po = patchNtk->getPo(i);
+        auto poName = po->getGateName();
+        if(oldPiNames.count(poName)) {
+                rewiredPiInPatch.insert(poName+"_in");
+                rewiredPiInOldNtk.insert(poName);
+                renameRewiredPi[poName] = poName + "_out";
         }
     }
 
@@ -1123,7 +1124,7 @@ EcoMgr::applyNCheckPatch(const string& patchName) {
         auto patchGate = patchNtk->getGate(i);
         auto gateTypeName = patchGate->getGateTypeName();
         // we do not define the pi gate in patch circuit 
-        if(gateTypeName == "pi") {
+        if(patchGate->isPi()) {
             continue;
         }
         auto patchGateName = patchGate->getGateName();

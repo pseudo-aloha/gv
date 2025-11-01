@@ -253,6 +253,7 @@ class EcoNtk {
     unordered_set<EcoGate*> getGateByAbcNode(Abc_Obj_t* pObj) { if(!_abcObj2EcoGate.count(Abc_ObjRegular(pObj))) return {}; return _abcObj2EcoGate.at(Abc_ObjRegular(pObj)); }
     EcoGate* getConst0Gate();
     EcoGate* getConst1Gate();
+    EcoGate* getConstGate(bool val) { return (val ? getConst1Gate() : getConst0Gate()); }
     EcoGate* getPoByName(const string& name);
     EcoGate* getGate(unsigned id) { return GateVec.at(id); }
     EcoGate* getPi(unsigned id) { return _PIList.at(id); }

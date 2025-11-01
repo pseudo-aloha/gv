@@ -105,6 +105,20 @@ EcoMgr::sortCutsByNumMergedGates(vector<gv::cir::EcoCut*>& cuts) {
     });
 }
 
+int getMergedGateScore(const pair<gv::cir::EcoCut*, ConstInsertList>& a) {
+    auto[aCut, aConst] = a;
+    int aMergedNum = aCut->getNumMergedLeaves();
+    if(!aConst.empty()) {
+        for(const auto& aCon : aConst) {
+            int constAssignedLeafIdx = aCon / 2;
+            auto constAssignedLeaf = aCut->getLeaf(constAssignedLeafIdx);
+            if(constAssignedLeaf->isMerged() && !constAssignedLeaf->isConstGate())
+                --aMergedNum;
+        }
+    }
+    return aMergedNum;
+}
+
 // sort the cuts by the number of the merged gates
 void
 EcoMgr::sortCutsByNumMergedGates(vector<pair<gv::cir::EcoCut*, ConstInsertList>>& cuts) {
@@ -141,14 +155,14 @@ EcoMgr::sortCutsByNumMergedGates(vector<pair<gv::cir::EcoCut*, ConstInsertList>>
 
 // sort the NPN class by the size of union of merged gates
 vector<string>
-EcoMgr::sortNPNClass(unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>>& NPNClass2Cuts) {
+EcoMgr::sortNPNClass(const unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>>& NPNClass2Cuts) {
     vector<string> sortedNPNClass;
     vector<NPNClassSignature*> sortedNPNClassSignatures;
     
     for(auto&[NPNClass, cutsInfo] : NPNClass2Cuts) {
         unsigned cutSize = cutsInfo.front().first->getCutSize();
         
-        sortedNPNClass.push_back(NPNClass);
+        // sortedNPNClass.push_back(NPNClass);
         unordered_set<gv::cir::EcoGate*> mergedGateSt;
         for(const auto&[cut, constInsert] : cutsInfo) {
             for(const auto& leaf : cut->getLeaves()) {
@@ -203,7 +217,10 @@ EcoMgr::doOutputSideMatching() {
     
     for(unsigned i=0; i<nPo; ++i) {
         cout << "matching po : " << _oldNtk->getPo(i)->getGateName() << endl;
-        if(check2ConeEq(i)) continue;
+        if(check2ConeEq(i)) {
+            cout << "po pair is eq" << endl;
+            continue;
+        }
         matchOnePo(i);
     }
 
@@ -237,7 +254,7 @@ EcoMgr::matchOnePo(unsigned ithPo) {
         if(visited.count(oldGate) || isUnderMergeFrontierSet(oldGate)) break;
         visited.insert(oldGate);
 
-        auto rp = matchCutsAtGatePair(oldPo, newPo, ithPo);
+        auto rp = matchCutsAtGatePair(oldPo, newPo, ithPo, false);
 
         if(!rp.empty()) {
             candRp.erase(oldGate);
@@ -261,7 +278,7 @@ EcoMgr::matchOnePo(unsigned ithPo) {
 
 // match the cuts at the gate pair (now used for po matching)
 unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>>
-EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo) {
+EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo, bool doConstInsert) {
     // get the cuts rooted at gate pair
     auto oldPoCuts = _oldNtk->getGateCuts(oldGate);
     auto newPoCuts = _newNtk->getGateCuts(newGate);
@@ -274,7 +291,7 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
     unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>> newNPNClass2Cuts;
 
     // compute the cuts signature and sort by #merged gates
-    computeCutsSignatures(oldNPNClass2Cuts, oldPoCuts, true);
+    computeCutsSignatures(oldNPNClass2Cuts, oldPoCuts, doConstInsert);
     computeCutsSignatures(newNPNClass2Cuts, newPoCuts);
 
     // sort the NPN classes by
@@ -303,7 +320,7 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
                 auto&[oldCut, oldConstInsert] = oldCutsInfo.at(oldIdx);
                 for(int newIdx = 0; oldIdx + newIdx <= dist && newIdx < newCutsInfo.size(); ++newIdx) {
                     auto&[newCut, newConstInsert] = newCutsInfo.at(newIdx);
-                    auto[matchSucess, match] = match2Cuts(oldCut, newCut, ithPo);
+                    auto[matchSucess, match] = match2Cuts(oldCut, newCut, oldConstInsert, ithPo);
                     if(matchSucess)
                         return match;
                     if(++numIt >= maxIt) {
@@ -342,38 +359,64 @@ EcoMgr::computeCutsSignatures(unordered_map<string, vector<pair<gv::cir::EcoCut*
         cut->setNumMergedLeaves(numMerged);
 
         // handle constant insertion cuts
-        if(!doConstInsert) continue; // skip if not to do constant insertion
-        unsigned cutSize = cut->getCutSize();
-        for(int nConst = 1; nConst < cutSize / 2; nConst++) {
-            vector<ConstInsertList> combs = getCombs(cutSize, nConst);
-            for(const auto& comb : combs) {
-                for(size_t bitMask = 0; bitMask < pow(2, nConst); bitMask++) {
-                    constInsertList.clear();
-                    for(int bitIdx = 0; bitIdx < nConst; bitIdx++) {
-                        constInsertList.push_back(comb.at(bitIdx) * 2 + (int)getIthBit(bitMask, bitIdx));
-                        NPNClass2Cuts[npnClass].push_back(make_pair(cut, constInsertList));
+        // skip if not to do constant insertion
+        if(doConstInsert) {
+            assert(cut->getRoot()->isInOldCircuit());
+            unsigned cutSize = cut->getCutSize();
+            for(int nConst = 1; nConst < (cutSize+1) / 2; nConst++) {
+                vector<ConstInsertList> combs = getCombs(cutSize, nConst);
+                for(const auto& comb : combs) {
+                    for(size_t bitMask = 0; bitMask < pow(2, nConst); bitMask++) {
+                        constInsertList.clear();
+                        // TODO : re-compute the npn-class of const inserted cuts
+                        vector<pair<int, bool>> constAssignmentOld;
+                        
+                        
+                        for(int bitIdx = 0; bitIdx < nConst; bitIdx++) {
+                            // cout << (comb.at(bitIdx) * 2 + (int)getIthBit(bitMask, bitIdx)) << " ";
+                            constInsertList.push_back(comb.at(bitIdx) * 2 + (int)getIthBit(bitMask, bitIdx));
+                        }
+                        for(const auto& constInsert : constInsertList) {
+                            // cout << "ddd " << constInsert / 2 << " " << constInsert % 2 << endl;
+                            constAssignmentOld.push_back(make_pair(constInsert / 2, constInsert % 2));
+                        }
+                        const unsigned simSize = cutSize - nConst;
+                        // cout << "size : " << constAssignmentOld.size() << " " << nConst << endl;
+                        auto oldCutTT = _oldNtk->computeCutTTWithConst(cut, constAssignmentOld);
+                        
+                        for(const auto&[constIdx, constVal] : constAssignmentOld) {
+                            cout << "assign " << cut->getLeaf(constIdx)->getGateName() << " " << constVal << endl;
+                        }
+                        printBits(oldCutTT);
+                        auto[constInsertNpnClass, _] = _pNpnHash->getNPNHash(oldCutTT, simSize);
+                        NPNClass2Cuts[constInsertNpnClass].push_back(make_pair(cut, constInsertList));
+                        
+                        cout << "const insert NPN class : " << constInsertNpnClass << endl;
+                        // cout << endl;
                     }
                 }
             }
         }
     }
-    for(auto&[NPNClass, NPNCuts] : NPNClass2Cuts)
+    for(auto&[NPNClass, NPNCuts] : NPNClass2Cuts) {
         sortCutsByNumMergedGates(NPNCuts);
+        cout << "NPNClass " << NPNClass << " " << NPNCuts.size() << endl;
+    }
 }
 
 // use the bits of the size_t to control each constant assignment bits
 void
-getConstAssignFromSizeT(size_t constAssignSizeT, vector<pair<int, bool>>& constAssignment) {
-    for(int i=0; i<constAssignment.size(); ++i)
+getConstAssignFromSizeT(size_t constAssignSizeT, vector<pair<int, bool>>& constAssignment, const int constAssignSize) {
+    size_t n = constAssignment.size();
+    for(int i=n-constAssignSize; i<n; ++i)
         constAssignment.at(i).second = getIthBit(constAssignSizeT, i);
 }
 
 // use the bits of the size_t to control each constant assignment bits, consider pole
 void
-getConstAssignFromSizeT(size_t constAssignSizeT, size_t invAssignSizeT, vector<pair<int, bool>>& constAssignment) {
-    
+getConstAssignFromSizeT(size_t constAssignSizeT, size_t invAssignSizeT, vector<pair<int, bool>>& constAssignment, const int constAssignSize) {
     size_t n = constAssignment.size();
-    for(int i=0; i<n; ++i) {
+    for(int i=n-constAssignSize; i<n; ++i) {
         bool inv = getIthBit(invAssignSizeT, i);
         bool bit = getIthBit(constAssignSizeT, i);
 
@@ -386,24 +429,36 @@ getConstAssignFromSizeT(size_t constAssignSizeT, size_t invAssignSizeT, vector<p
 // for cuts with size greater than 4, use simulation to find if there is a valid solution
 // if there is no valid solution, the output matching will be returned as -1
 vector<size_t>
-EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vector<int>& comb) {
+EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vector<int>& comb, const ConstInsertList& ConstInsert) {
     extern int factorial(int n);
     vector<size_t> ret;
-    const int constAssignSize = comb.size();
+    const int constAssignSize = comb.size(); // this const assign size does not include const insert
     const unsigned cutSize = oldCut->getCutSize();
-    const unsigned simSize = cutSize - constAssignSize;
+    const unsigned simSize = cutSize - constAssignSize - ConstInsert.size();
     int numPermutation = factorial(comb.size());
     unordered_map<gv::cir::EcoGate*, int> gate2IdxOld ,gate2IdxNew;
-    
+    unordered_set<gv::cir::EcoGate*> constAssignGateSet;
+    unordered_map<gv::cir::EcoGate*, bool> constInsertGateMap; // map const inserted gate to the mapped pole
+
+    // here we merge the const assignments of 5/6 sim and const assertion algo
     vector<pair<int, bool>> constAssignmentOld(constAssignSize);
     vector<pair<int, bool>> constAssignmentNew(constAssignSize);
 
+    for(const auto& idx : comb)
+        constAssignGateSet.insert(oldCut->getLeaf(idx));
+    for(const auto& ci : ConstInsert) {
+        int idx = ci / 2;
+        bool val = ci % 2;
+        constInsertGateMap[oldCut->getLeaf(idx)] = val;
+        constAssignGateSet.insert(oldCut->getLeaf(idx));
+        constAssignmentOld.push_back(make_pair(idx, val));
+    }
 
     vector<gv::cir::EcoGate*> oldFreeLeaves, oldLeaves;
     vector<gv::cir::EcoGate*> newFreeLeaves, newLeaves;
     int idx = 0;
     for(const auto& leaf : oldCut->getLeaves()) {
-        if(find(comb.begin(), comb.end(), idx) == comb.end())
+        if(!constAssignGateSet.count(leaf)) // the leaf is not const inserted
             oldFreeLeaves.push_back(leaf);
         oldLeaves.push_back(leaf);
         gate2IdxOld[leaf] = idx;
@@ -417,7 +472,6 @@ EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vec
         gate2IdxNew[leaf] = idx;
         ++idx;
     }
-
     
 
     // try different permutaion
@@ -432,8 +486,11 @@ EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vec
             // for the old cut, we choose comb[0] as the first fanin, comb[1] as second fanin, and so on...
             // 1. set 00/01/10/11 (all the permutation) to 1/2... fanins, and sim the remaining 4 fanins to get truth table
             for(size_t constAssignSizeT = 0; constAssignSizeT < pow(2, constAssignSize); ++constAssignSizeT) {
-                getConstAssignFromSizeT(constAssignSizeT, invAssignSizeT, constAssignmentOld); // apply pole change on old cut
-                getConstAssignFromSizeT(constAssignSizeT, constAssignmentNew);
+                // Do const insert sim for the extra inputs (more than 4)
+                getConstAssignFromSizeT(constAssignSizeT, invAssignSizeT, constAssignmentOld, constAssignSize); // apply pole change on old cut
+                getConstAssignFromSizeT(constAssignSizeT, constAssignmentNew, constAssignSize);
+
+                // cout << "pppp " << oldCut->getCutSize() << " " << newCut->getCutSize() << " " << constAssignmentOld.size() << endl;
 
                 auto oldCutTT = _oldNtk->computeCutTTWithConst(oldCut, constAssignmentOld);
                 auto newCutTT = _newNtk->computeCutTTWithConst(newCut, constAssignmentNew);
@@ -445,7 +502,7 @@ EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vec
                 if(oldNpnClass != newNpnClass) {
                     matches.clear();
                     break; 
-                } 
+                }
                 
                 unordered_set<size_t> caseMatches;
 
@@ -462,7 +519,6 @@ EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vec
 
                     for(int i=1; i<oldMatch.size(); ++i)
                         inputMatch[i - 1] = ((newPosVec[oldMatch[i] / 2] - 1) * 2 + ((newMatch[newPosVec[oldMatch[i] / 2]] & 0b1) ^ (oldMatch.at(i) & 0b1)));
-                    
                     auto encode = _pNpnHash->encodeMatch2SizeT(outputMatch, inputMatch);
                     
                     if(constAssignSizeT == 0 || matches.count(encode))
@@ -510,6 +566,7 @@ EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vec
                 //     assert(checkMatchValidWithConst(oldCut, newCut, outputMatch, inputMatch, constAssignmentOld, constAssignmentNew));
                 // }
             }
+            assert(ConstInsert.empty() || matches.empty());
             for(const auto& match : matches) {
                 auto[outputMatch, freeInputMatch] = _pNpnHash->decodeEncodedSizeTMatch(match, simSize);
                 unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch;
@@ -527,27 +584,52 @@ EcoMgr::simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vec
                     bool inv = (bool)(m % 2);
                     inputMatch[oldFreeLeaves.at(oldPos)] = {newFreeLeaves.at(newPos), inv};
                     inputMatchIntVec[gate2IdxOld.at(oldFreeLeaves.at(oldPos))] = gate2IdxNew.at(newFreeLeaves.at(newPos)) * 2 + inv;
-                    cout << oldFreeLeaves.at(oldPos)->getGateFullName() << " " << newFreeLeaves.at(newPos)->getGateFullName() << " inv " << m % 2 << endl;
+                    assert(oldLeaves.at(gate2IdxOld.at(oldFreeLeaves.at(oldPos))) == oldFreeLeaves.at(oldPos));
+                    assert(newLeaves.at(gate2IdxNew.at(newFreeLeaves.at(newPos))) == newFreeLeaves.at(newPos));
+                    cout << oldFreeLeaves.at(oldPos)->getGateFullName() << " " << newFreeLeaves.at(newPos)->getGateFullName() << " inv " << m % 2 << " " << gate2IdxOld.at(oldFreeLeaves.at(oldPos)) << " " << gate2IdxNew.at(newFreeLeaves.at(newPos)) << endl;
                 }
-                // handle the const leaves
+                // handle the const leaves for 5/6 sim
                 cout << "combo :" << endl;
                 for(int j=0; j<comb.size(); ++j) {
                     bool inv = getIthBit(invAssignSizeT, j);
                     inputMatch[oldLeaves.at(comb.at(j))] = {newLeaves.at(j), inv};
                     inputMatchIntVec[comb.at(j)] = j * 2 + inv;
                     assert(inputMatchIntVec[comb.at(j)] < cutSize);
-                    cout << oldLeaves.at(comb.at(j))->getGateFullName() << " " << newLeaves.at(j)->getGateFullName() << " inv " << inv << endl; 
+                    cout << oldLeaves.at(comb.at(j))->getGateFullName() << " " << newLeaves.at(j)->getGateFullName() << " inv " << inv << " " << comb.at(j) << " " << j << endl; 
                 }
-                assert(checkMatchValid(oldCut, newCut, outputMatch, inputMatch));
-                cout << "---------------" << endl;
+                // todo:handle const insertion algo
+                if(!ConstInsert.empty()) {
+                    cout << "const insert : " << endl;
+                    for(const auto& ci : ConstInsert) {
+                        int idx = ci / 2;
+                        int val = ci % 2;
+                        // inputMatch[oldLeaves.at(comb.at(j))] = {newLeaves.at(j), val};
+                        inputMatchIntVec[idx] = 2 * EcoNPNHash::CONST0SIZETENCODE + val;
+                        cout << oldCut->getLeaf(idx)->getGateFullName() << " " << val << endl;
+                    }
+                }
+
+                assert(checkMatchValidWithConst(oldCut, newCut, outputMatch, inputMatch, ConstInsert, {}));
+                
                 size_t encode = _pNpnHash->encodeMatch2SizeT(outputMatch, inputMatchIntVec);
+                auto[_outputMatch, _inputMatch] = _pNpnHash->decodeEncodedSizeTMatch(encode, cutSize);
+                // for(unsigned j=0; j<_inputMatch.size(); ++j) {
+                //     const auto& m = _inputMatch.at(j);
+                //     unsigned oldPos = j;
+                //     unsigned newPos = m / 2;
+                //     bool inv = (bool)(m % 2);
+                //     // cout << oldLeaves.at(oldPos)->getGateFullName() << " " << newLeaves.at(newPos)->getGateFullName() << endl;
+                //     // cout << inputMatch[oldLeaves.at(oldPos)].first->getGateFullName() << " " << newLeaves.at(newPos)->getGateFullName() << endl;
+                //     // assert(inputMatch[oldLeaves.at(oldPos)].first == newLeaves.at(newPos));
+                //     // assert(inputMatch[oldLeaves.at(oldPos)].second == inv);
+                // }
                 ret.push_back(encode);
             }
         }
 
         next_permutation(comb.begin(), comb.end());
     }
-
+assert(ConstInsert.empty() || ret.empty());
     return ret;
 }
 
@@ -647,11 +729,26 @@ EcoMgr::checkMatchValid(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ou
 
 
 bool
-EcoMgr::checkMatchValidWithConst(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int outputInv, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch, unordered_map<gv::cir::EcoGate*, bool>& constAssignmentOld, unordered_map<gv::cir::EcoGate*, bool>& constAssignmentNew) {
-    assert(oldCut->getCutSize() == newCut->getCutSize());
+EcoMgr::checkMatchValidWithConst(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int outputInv, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputMatch, const ConstInsertList& constInsertOld, const ConstInsertList& constInsertNew) {
+    const unsigned oldCutSize = oldCut->getCutSize() - constInsertOld.size(); // the valid cut size of the old cut
+    const unsigned newCutSize = newCut->getCutSize() - constInsertNew.size();
+    assert(oldCutSize == newCutSize);
     const unsigned cutSize = oldCut->getCutSize(); // get the cut size
-    const unsigned simSize = cutSize - constAssignmentOld.size();
+    const unsigned simSize = oldCutSize;
     unordered_set<gv::cir::CirGate*> oldLeafCirGates, newLeafCirGates;
+    unordered_map<gv::cir::EcoGate*, bool> constAssignmentOld, constAssignmentNew;
+
+    for(const auto& cInsert : constInsertOld) {
+        unsigned idx = cInsert / 2;
+        bool val = cInsert % 2;
+        constAssignmentOld[oldCut->getLeaf(idx)] = val;
+    }
+    for(const auto& cInsert : constInsertNew) {
+        unsigned idx = cInsert / 2;
+        bool val = cInsert % 2;
+        constAssignmentNew[newCut->getLeaf(idx)] = val;
+    }
+    
     gv::cir::CirGate* oldRootAigGate = oldCut->getRoot()->getAigNode();
     gv::cir::CirGate* newRootAigGate = newCut->getRoot()->getAigNode();
 
@@ -680,14 +777,18 @@ EcoMgr::checkMatchValidWithConst(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCu
         size_t pattern = patterns[patternIdx++];
         size_t invPattern = (~pattern);
         
-        if(inputInv ^ oldGate->getAigNodeInv())
-            pAigOld->setPValue(invPattern);
-        else
-            pAigOld->setPValue(pattern);
-        if(newGate->getAigNodeInv())
-            pAigNew->setPValue(invPattern);
-        else
-            pAigNew->setPValue(pattern);
+        if(!oldGate->isConstGate()) {
+            if(inputInv ^ oldGate->getAigNodeInv())
+                pAigOld->setPValue(invPattern);
+            else
+                pAigOld->setPValue(pattern);
+        }
+        if(!newGate->isConstGate()) {
+            if(newGate->getAigNodeInv())
+                pAigNew->setPValue(invPattern);
+            else
+                pAigNew->setPValue(pattern);
+        }
         
         oldLeafCirGates.insert(pAigOld);
         newLeafCirGates.insert(pAigNew);
@@ -749,18 +850,29 @@ EcoMgr::checkMatchValidWithConst(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCu
 }
 
 // get one valid matching method
+// TODO hangle const insert for 5/6 cuts
 vector<size_t>
-EcoMgr::getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut) {
+EcoMgr::getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, const ConstInsertList& ConstInsert) {
     vector<size_t> ret; // return the different match ways in encoded form
-    unsigned cutSize = oldCut->getCutSize();
+    const unsigned cutSize = oldCut->getCutSize();
+    const unsigned constInsertSize = ConstInsert.size();
+    const unsigned freeCutSize = cutSize - constInsertSize; // cut size for free inputs of the cut
+    unordered_map<gv::cir::EcoGate*, bool> constInsertGateMap; // map const inserted gate to the mapped pole
 
     int outputMatch = -1;
     
-    vector<int> inputMatch(cutSize);
+    vector<int> inputMatch(cutSize - constInsertSize); // this is the input matching without constant insertion
+    vector<int> inputMatchWithConst(cutSize); // this one adds the constant insertion things
+
+    for(const auto& cInsert : ConstInsert) {
+        int idx = cInsert / 2;
+        bool val = cInsert % 2;
+        constInsertGateMap[oldCut->getLeaf(idx)] = val;
+    }
     
     // for 4-feasible cut, directly lookup
-    if(cutSize <= 4) {
-        auto[oldNpnClass, oldMatches] = getNPNHashFull(oldCut);
+    if(freeCutSize <= 4) {
+        auto[oldNpnClass, oldMatches] = getNPNHashFull(oldCut, ConstInsert);
         auto[newNpnClass, newMatch] = getNPNHash(newCut);
 
         for(const auto& oldMatch : oldMatches) {
@@ -779,8 +891,6 @@ EcoMgr::getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut) {
                 inputMatch[i - 1] = ((newPosVec[oldMatch[i] / 2] - 1) * 2 + ((newMatch[newPosVec[oldMatch[i] / 2]] & 0b1) ^ (oldMatch.at(i) & 0b1)));
             }
 
-            
-
             // check that the matching is valid
             unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> inputGateMatch;
             vector<gv::cir::EcoGate*> oldLeaves, newLeaves;
@@ -789,30 +899,69 @@ EcoMgr::getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut) {
                 oldLeaves.push_back(leaf);
             for(const auto& leaf : newCut->getLeaves())
                 newLeaves.push_back(leaf);
-            for(int i=0; i<inputMatch.size(); ++i) {
-                inputGateMatch[oldLeaves.at(i)] = {newLeaves.at(inputMatch.at(i) / 2), (bool)(inputMatch.at(i) % 2)};
-                // cout << "in match " << oldLeaves.at(i)->getGateFullName() << " " << newLeaves.at(inputMatch.at(i) / 2)->getGateFullName() << " inv " << (bool)(inputMatch.at(i) % 2) << endl;
+            int inputMatchIdx = 0;
+
+             for(const auto& cInsert : ConstInsert) {
+                int idx = cInsert / 2;
+                bool val = cInsert % 2;
+                cout << oldCut->getLeaf(idx)->getGateFullName() << " " << val << endl;
+                // constInsertGateMap[oldCut->getLeaf(idx)] = val;
             }
-            assert(checkMatchValid(oldCut, newCut, outputMatch, inputGateMatch));
+            for(int oldLeafIdx = 0; oldLeafIdx < cutSize; ++oldLeafIdx) {
+                if(constInsertGateMap.count(oldLeaves.at(oldLeafIdx))) {
+                    bool constVal = constInsertGateMap.at(oldLeaves.at(oldLeafIdx));
+                    // 6 for const 0, 7 for const 1
+                    inputMatchWithConst[oldLeafIdx] = 2 * EcoNPNHash::CONST0SIZETENCODE + constVal;
+                    inputGateMatch[oldLeaves.at(oldLeafIdx)] = make_pair(_newNtk->getConst0Gate(), constVal);
+                    // cout << "loloha " << oldLeaves.at(oldLeafIdx)->getGateFullName() << " " << constVal << endl;
+                    // oldLeafIdx++;
+                    continue;
+                }
+                inputMatchWithConst[oldLeafIdx] = inputMatch.at(inputMatchIdx);
+                inputGateMatch[oldLeaves.at(oldLeafIdx)] = {newLeaves.at(inputMatch.at(inputMatchIdx) / 2), (bool)(inputMatch.at(inputMatchIdx) % 2)};
+                cout << "in match " << oldLeaves.at(oldLeafIdx)->getGateFullName() << " " << newLeaves.at(inputMatch.at(inputMatchIdx) / 2)->getGateFullName() << " inv " << (bool)(inputMatch.at(inputMatchIdx) % 2) << endl;
+                // oldLeafIdx++;
+                inputMatchIdx++;
+            }
+            cout << "m : ";
+            for(auto& m : inputMatchWithConst) {
+                cout << m << " ";
+            }
+            cout << endl;
+            assert(checkMatchValidWithConst(oldCut, newCut, outputMatch, inputGateMatch, ConstInsert, {}));
 
             // encode it and push it into return value
-            size_t encode = _pNpnHash->encodeMatch2SizeT(outputMatch, inputMatch);
+            size_t encode = _pNpnHash->encodeMatch2SizeT(outputMatch, inputMatchWithConst);
             ret.push_back(encode);
         }
     }
     // for 5/6-feasible cut, sim it and compute
     else {
-        vector<int> comb; // choose some signals to sim, others can be got by hashing
-        int k = cutSize - 4; // since 4 feasible cuts are pre-computed
+        vector<int> comb;    // choose some signals to sim, others can be got by hashing
+        int k = cutSize - 4 - ConstInsert.size(); // since 4 feasible cuts are pre-computed, and we also need to minus const inserted part
         
+        // insert 0~k-1 as the first comb
         for(unsigned i=0; i<k; ++i) 
             comb.push_back(i);
 
         while (1)
         {
-            // check if we can find a valid matching 
-            auto foundMatches = simNFindValidMatch(oldCut, newCut, comb); 
-            ret.insert(ret.end(), foundMatches.begin(), foundMatches.end());
+            // check if the comb conflicts with constant insertion
+            bool conflict = false;
+            for(const auto& c : comb) {
+                if(constInsertGateMap.count(oldCut->getLeaf(c))) {
+                    conflict = true;
+                    break;
+                }
+            }
+
+            // check if we can find a valid matching
+            if(!conflict) {
+                auto foundMatches = simNFindValidMatch(oldCut, newCut, comb, ConstInsert); 
+                ret.insert(ret.end(), foundMatches.begin(), foundMatches.end());
+            }
+            
+            // compute next combination
             int i = k-1;
             while (i>=0 && comb[i]==i + cutSize - k)
                 i--;
@@ -823,11 +972,11 @@ EcoMgr::getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut) {
             
         }
     }
-    for(unsigned i=0; i<ret.size(); ++i) {
-        auto[outputMatch, inputMatch] = _pNpnHash->decodeEncodedSizeTMatch(ret[i], cutSize);
-        for(unsigned j=0; j<cutSize; ++j)
-            assert(inputMatch.at(j) < 14);
-    }
+    // for(unsigned i=0; i<ret.size(); ++i) {
+    //     auto[outputMatch, inputMatch] = _pNpnHash->decodeEncodedSizeTMatch(ret[i], cutSize);
+    //     for(unsigned j=0; j<cutSize; ++j)
+    //         assert(inputMatch.at(j) < 14);
+    // }
     return ret;
 }
 
@@ -836,7 +985,10 @@ EcoMgr::getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut) {
 // match the 2 cuts and record the RP pair if possible
 // ith po is given when matching a particular po
 pair<bool, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>>>
-EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) {
+EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, const ConstInsertList& ConstInsert, int ithPo) {
+    const unsigned oldCutFreeSize = oldCut->getCutSize() - ConstInsert.size(); // the cut size without const insertion
+    const unsigned newCutFreeSize = newCut->getCutSize();
+    assert(oldCutFreeSize == newCutFreeSize);
     unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> candRPPair;
     vector<gv::cir::EcoGate*> oldLeaves;
     vector<gv::cir::EcoGate*> newLeaves;
@@ -856,7 +1008,7 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
         ++idx;
     }
     
-    auto matchWays = getMatchWays(oldCut, newCut);
+    auto matchWays = getMatchWays(oldCut, newCut, ConstInsert);
     // size_t encode = _pNpnHash->encodeMatch2SizeT(outputMatch, inputMatch);
 
     unordered_map<gv::cir::CirGate*, pair<gv::cir::EcoGate*, bool>> newAig2MergedOldGate;
@@ -875,7 +1027,7 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
             // cout << "old " << gate2IdxOld.at(oldGate) << " new " << gate2IdxNew.at(newGate) << " inv " << inv << endl;
         }
     }
-
+    cout << "num match ways : " << matchWays.size() << " " << ConstInsert.size() << endl;
     size_t candMatch = 0;
     int bestScore = -1; // number of matched
     for(unsigned i=0; i<matchWays.size(); ++i) {
@@ -884,6 +1036,11 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
         for(unsigned j=0; j<inputMatch.size(); ++j) {
             auto oldGate = oldLeaves.at(j);
             auto m = inputMatch.at(j);
+
+            // skip if it is a const inserted gate
+            if(m >= 2 * EcoNPNHash::CONST0SIZETENCODE)
+                continue;
+
             if(oldGate2MergedNewGate.count(oldGate)) {
                 auto[newMergedGate, mergeInv] = oldGate2MergedNewGate.at(oldGate);
                 auto newGate = newLeaves.at(m / 2);
@@ -893,6 +1050,7 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
             }
         }
         if(score > bestScore) {
+            cout << "best score " << score << " " << i << endl;
             bestScore = score;
             candMatch = matchWays.at(i);
         }
@@ -904,15 +1062,21 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, int ithPo) 
     
     // find a match way that can maximally match the merged gates
     auto[outputMatch, inputMatch] = _pNpnHash->decodeEncodedSizeTMatch(candMatch, oldCut->getCutSize());
-    cout << "output match : " << outputMatch << endl;
+    cout << "output match : " << outputMatch << " const insert size " << ConstInsert.size() << endl;
     if(outputMatch) return make_pair(false, candRPPair); // we don't want invert at po, TODO : check if we have to change to NPN
     for(int i=0; i<inputMatch.size(); ++i) {
         auto oldGate = oldLeaves.at(i);
-        auto newGate = newLeaves.at(inputMatch[i] / 2);
+        gv::cir::EcoGate* newGate = nullptr;
+        unsigned matchedIdx = inputMatch.at(i) / 2;
+        bool matchedInv = inputMatch.at(i) % 2;
 
-        // if the rp pair are both driven by a chain of buf/inv, try to find the root
-        bool isOldGateInvBuf = (oldGate->getGateType() == gv::cir::EcoGate::ECO_BUF_GATE || oldGate->getGateType() == gv::cir::EcoGate::ECO_NOT_GATE);
-        bool isNewGateInvBuf = (newGate->getGateType() == gv::cir::EcoGate::ECO_BUF_GATE || newGate->getGateType() == gv::cir::EcoGate::ECO_NOT_GATE);
+        if(matchedIdx >= EcoNPNHash::CONST0SIZETENCODE) {
+            newGate = _newNtk->getConst0Gate();
+        }
+        else {
+            newGate = newLeaves.at(inputMatch.at(i) / 2);
+        }
+
         bool inv = inputMatch[i] % 2;
 
         if(isUnderMergeFrontierSet(oldGate)) {
@@ -964,132 +1128,6 @@ int getSigMatchedScore(const vector<pair<string, bool>>& sig1, const vector<pair
     return ret;
 }
 
-void
-EcoMgr::sortCandCutsByScore() {
-    // record NPN class 2 the cuts
-    unordered_map<string, vector<gv::cir::EcoCut*>> NPNClass2CutsOld;
-    unordered_map<string, vector<gv::cir::EcoCut*>> NPNClass2CutsNew;
-
-    // collect the cuts
-    for(size_t i=0; i<_oldNtk->getNumGates(); ++i) {
-        const auto g = _oldNtk->getGate(i);
-        const auto cuts = _oldNtk->getGateCuts(g);
-        for(const auto& cut : cuts) {
-            if(cut->getCutSize() <= 1) continue;
-            _oldCandCuts.push_back(cut);
-            vector<pair<string, bool>> mgAigSigVec;
-            string mgAigSig;
-            for(const auto& leaf : cut->getLeaves()) {
-                if(isMerged(leaf))
-                    mgAigSigVec.push_back({to_string(leaf->getAigNode()->getGid()), leaf->getAigNodeInv()});
-                sort(mgAigSigVec.begin(), mgAigSigVec.end());
-            }
-            cut->setMgAigSig(mgAigSigVec);
-        }
-    }
-    for(size_t i=0; i<_newNtk->getNumGates(); ++i) {
-        const auto g = _newNtk->getGate(i);
-        const auto cuts = _newNtk->getGateCuts(g);
-        for(const auto& cut : cuts) {
-            if(cut->getCutSize() <= 1) continue;
-            _newCandCuts.push_back(cut);
-            vector<pair<string, bool>> mgAigSigVec;
-            string mgAigSig;
-            for(const auto& leaf : cut->getLeaves()) {
-                if(isMerged(leaf)) {
-                    auto[mergedAig, pole] = getMergedAig(leaf);
-                    mgAigSigVec.push_back({to_string(mergedAig->getGid()), pole});
-                }
-                sort(mgAigSigVec.begin(), mgAigSigVec.end());
-            }
-            cut->setMgAigSig(mgAigSigVec);
-        }
-    }
-    cout << "# old cuts : " << _oldCandCuts.size() << endl;
-    cout << "# new cuts : " << _newCandCuts.size() << endl;
-
-
-    // sort by score
-    // sort the cut by the number of merged gates
-    for(auto& oldCut : _oldCandCuts) {
-        unsigned numMerged = 0;
-        for(const auto& leaf : oldCut->getLeaves()) {
-            if(isMerged(leaf))
-                ++numMerged;
-        }
-        oldCut->setNumMergedLeaves(numMerged);
-        auto[npnClass, match] = getNPNHash(oldCut);
-        oldCut->setNPNClass(npnClass);
-        NPNClass2CutsOld[npnClass].push_back(oldCut);
-    }
-
-    for(auto& newCut : _newCandCuts) {
-        unsigned numMerged = 0;
-        for(const auto& leaf : newCut->getLeaves()) {
-            
-            if(isMerged(leaf)) {
-                ++numMerged;
-            }
-        }
-        newCut->setNumMergedLeaves(numMerged);
-        auto[npnClass, match] = getNPNHash(newCut);
-        newCut->setNPNClass(npnClass);
-        NPNClass2CutsNew[npnClass].push_back(newCut);
-    }
-
-    sort(_oldCandCuts.begin(), _oldCandCuts.end(), cutScoreCmp);
-    sort(_newCandCuts.begin(), _newCandCuts.end(), cutScoreCmp);
-
-    // for(const auto& oldCut : _oldCandCuts) {
-    //     cout << "#merged " << oldCut->getNumMergedLeaves() << endl;
-    //     oldCut->reportCut();
-    // }
-    // choose a cut from new cir cuit and start matching
-    for(const auto& newCut : _newCandCuts) {
-        const string newNPNClass = newCut->getNPNClass();
-
-        // find the old cuts of the same NPN class as the new cut
-        int bestScore = -1;
-        gv::cir::EcoCut* chosenOldCand;
-        if(NPNClass2CutsOld.count(newNPNClass)) {
-            newCut->reportCut();
-            auto sameNPNOldCuts = NPNClass2CutsOld.at(newNPNClass);
-            for(const auto& oldCut : sameNPNOldCuts) {
-                int score = getSigMatchedScore(oldCut->getMgAigSig(), newCut->getMgAigSig());
-                if(score > bestScore) {
-                    cout << "score : " << score << endl;
-                    oldCut->reportCut();
-                    chosenOldCand = oldCut;
-                    bestScore = score;
-                }
-            }
-            cout << "new npn " << newCut->getNPNClass() << " old npn " << chosenOldCand->getNPNClass() << endl;
-            // find the match ways
-            match2Cuts(chosenOldCand, newCut);
-            break;
-        }
-        
-        
-
-        // use signature to find a most competitive cut from candidates
-        // int bestScore = -1;
-        // gv::cir::EcoCut* chosenOldCand;
-        // for(const auto& oldCut : _oldCandCuts) {
-        //     int score = getSigMatchedScore(oldCut->getMgAigSig(), newCut->getMgAigSig());
-        //     // cout << "score : " << score << endl;
-        //     if(score > bestScore) {
-        //         cout << "score : " << score << endl;
-        //         oldCut->reportCut();
-        //         chosenOldCand = oldCut;
-        //         bestScore = score;
-                
-        //     }
-        // }
-        // chosenOldCand->reportCut();
-        // break;
-        
-    }
-}
 
 // end of namespace gv::eco
 }
