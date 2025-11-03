@@ -21,11 +21,13 @@ class EcoGate;
 class EcoCir;
 class EcoCirGate;
 class EcoCut;
+class EcoCutInfo;
 }}
 
 namespace gv {
   namespace eco {
     class EcoMgr;
+    typedef vector<int> ConstInsertList;
   }}
 
 namespace gv {
@@ -190,6 +192,22 @@ private:
   // constant
 };
 
+// wrap EcoCut and add some more information for cut sorting things
+class EcoCutInfo {
+  public:
+    EcoCutInfo(EcoCut* cut, gv::eco::ConstInsertList constInsertList) : _cut(cut), _numMerged(0), _constInsertList(constInsertList) {}
+    ~EcoCutInfo() { _cut = nullptr; _numMerged = 0; }
+    void setNumMerged(unsigned i) { _numMerged = i; };
+    const unsigned getNumMerged() const { return _numMerged; }
+    const gv::eco::ConstInsertList& getConstInsertList() const { return _constInsertList; }
+    EcoCut* getCut() const { return _cut; }
+  
+  private:
+    EcoCut* _cut;
+    unsigned _numMerged;
+    gv::eco::ConstInsertList _constInsertList;
+};
+
 // Wrap CirMgr, modified to store some extra information for ECO usage
 class EcoCir {
   
@@ -225,6 +243,9 @@ class EcoNtk {
     void parseGate(const vector<string>& line);
     void genConnection(bool reducePi = false);
     void sortGatesInTopoOrder(bool reducePi = false);
+
+    // fraig utils
+    const vector<vector<gv::cir::EcoGate*>> getPiEqClass() const { return _piEqClass; }
 
     // cut enumeration function
     void enumerateCuts(unsigned k, gv::eco::EcoMgr* pEco); // enumerate k-feasible cuts
@@ -281,6 +302,7 @@ class EcoNtk {
 
     // used for fraig
     unordered_map<Abc_Obj_t*, unordered_set<EcoGate*>> _abcObj2EcoGate;
+    vector<vector<gv::cir::EcoGate*>> _piEqClass;
 
     // cut members
     unordered_map<EcoGate*, vector<EcoCut*>> _gate2Cuts;

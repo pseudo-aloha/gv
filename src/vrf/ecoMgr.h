@@ -89,13 +89,16 @@ public:
   // get function
   string getOldDesignName() { return _oldDesignName; }
   string getNewDesignName() { return _newDesignName; }
+
+  // fraig
+  void Net2PO( Abc_Ntk_t* pNtk);
   
   // ---------------------
   // matching functions
   // ---------------------
   // general matching function
   unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate, int ithPo = -1, bool doConstInsert = false); // match the cuts at the gate pair
-  void computeCutsSignatures(unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>>& NPNClass2Cuts, vector<gv::cir::EcoCut *>& cuts, bool doConstInsert = false);
+  void computeCutsSignatures(unordered_map<string, vector<gv::cir::EcoCutInfo*>>& NPNClass2Cuts, vector<gv::cir::EcoCut *>& cuts, bool doConstInsert = false);
   pair<bool, unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>>> match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, const ConstInsertList& ConstInsert, int ithPo = -1);
   vector<size_t>  getMatchWays(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, const ConstInsertList& ConstInsert);
   vector<size_t> simNFindValidMatch(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, vector<int>& comb, const ConstInsertList& ConstInsert);
@@ -107,8 +110,8 @@ public:
   // ---------------------
   // void sortCandCutsByScore(); // collect the enumerated cuts and compute their scores
   void sortCutsByNumMergedGates(vector<gv::cir::EcoCut*>& cuts);
-  void sortCutsByNumMergedGates(vector<pair<gv::cir::EcoCut*, ConstInsertList>>& cuts);
-  vector<string> sortNPNClass(const unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>>& newNPNClass2Cuts);
+  void sortCutsByNumMergedGates(vector<gv::cir::EcoCutInfo*>& cuts);
+  vector<string> sortNPNClass(const unordered_map<string, vector<gv::cir::EcoCutInfo*>>& newNPNClass2Cuts);
 
   // signature computation functions
 

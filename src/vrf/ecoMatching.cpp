@@ -105,66 +105,46 @@ EcoMgr::sortCutsByNumMergedGates(vector<gv::cir::EcoCut*>& cuts) {
     });
 }
 
-int getMergedGateScore(const pair<gv::cir::EcoCut*, ConstInsertList>& a) {
-    auto[aCut, aConst] = a;
-    int aMergedNum = aCut->getNumMergedLeaves();
-    if(!aConst.empty()) {
-        for(const auto& aCon : aConst) {
-            int constAssignedLeafIdx = aCon / 2;
-            auto constAssignedLeaf = aCut->getLeaf(constAssignedLeafIdx);
-            if(constAssignedLeaf->isMerged() && !constAssignedLeaf->isConstGate())
-                --aMergedNum;
-        }
-    }
-    return aMergedNum;
-}
+// int getMergedGateScore(const gv::cir::EcoCutInfo*& a) {
+//     auto aCut = a->getCut();
+//     auto aConst = a->getConstInsertList();
+//     int aMergedNum = aCut->getNumMergedLeaves();
+//     if(!aConst.empty()) {
+//         for(const auto& aCon : aConst) {
+//             int constAssignedLeafIdx = aCon / 2;
+//             auto constAssignedLeaf = aCut->getLeaf(constAssignedLeafIdx);
+//             if(constAssignedLeaf->isMerged() && !constAssignedLeaf->isConstGate())
+//                 --aMergedNum;
+//         }
+//     }
+//     return aMergedNum;
+// }
 
 // sort the cuts by the number of the merged gates
 void
-EcoMgr::sortCutsByNumMergedGates(vector<pair<gv::cir::EcoCut*, ConstInsertList>>& cuts) {
-    sort(cuts.begin(), cuts.end(), [](pair<gv::cir::EcoCut*, ConstInsertList> a, pair<gv::cir::EcoCut*, ConstInsertList> b) {
-        auto[aCut, aConst] = a;
-        auto[bCut, bConst] = b;
-        int aMergedNum = aCut->getNumMergedLeaves();
-        int bMergedNum = bCut->getNumMergedLeaves();
-        int prevA = aMergedNum;
-        int prevB = bMergedNum;
-        if(!aConst.empty() || !bConst.empty()) {
-            if(!aConst.empty()) {
-                for(const auto& aCon : aConst) {
-                    int constAssignedLeafIdx = aCon / 2;
-                    auto constAssignedLeaf = aCut->getLeaf(constAssignedLeafIdx);
-                    if(constAssignedLeaf->isMerged() && !constAssignedLeaf->isConstGate())
-                        --aMergedNum;
-                }
-            }
-            if(!bConst.empty()) {
-                for(const auto& bCon : bConst) {
-                    int constAssignedLeafIdx = bCon / 2;
-                    auto constAssignedLeaf = bCut->getLeaf(constAssignedLeafIdx);
-                    if(constAssignedLeaf->isMerged() && !constAssignedLeaf->isConstGate())
-                        --bMergedNum;
-                }
-            }
-        }
+EcoMgr::sortCutsByNumMergedGates(vector<gv::cir::EcoCutInfo*>& cuts) {
+    sort(cuts.begin(), cuts.end(), [](gv::cir::EcoCutInfo*& a, gv::cir::EcoCutInfo*& b) {
+        int aMergedNum = a->getNumMerged();
+        int bMergedNum = b->getNumMerged();
 
-        assert(aMergedNum >= 0 && bMergedNum >= 0);
         return (aMergedNum > bMergedNum);
     });
 }
 
 // sort the NPN class by the size of union of merged gates
 vector<string>
-EcoMgr::sortNPNClass(const unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>>& NPNClass2Cuts) {
+EcoMgr::sortNPNClass(const unordered_map<string, vector<gv::cir::EcoCutInfo*>>& NPNClass2Cuts) {
     vector<string> sortedNPNClass;
     vector<NPNClassSignature*> sortedNPNClassSignatures;
     
     for(auto&[NPNClass, cutsInfo] : NPNClass2Cuts) {
-        unsigned cutSize = cutsInfo.front().first->getCutSize();
+        unsigned cutSize = cutsInfo.front()->getCut()->getCutSize();
         
         // sortedNPNClass.push_back(NPNClass);
         unordered_set<gv::cir::EcoGate*> mergedGateSt;
-        for(const auto&[cut, constInsert] : cutsInfo) {
+        for(const auto& cutInfo : cutsInfo) {
+            auto cut = cutInfo->getCut();
+            auto constInsert = cutInfo->getConstInsertList();
             for(const auto& leaf : cut->getLeaves()) {
                 if(isMerged(leaf))
                     mergedGateSt.insert(leaf);
@@ -254,7 +234,7 @@ EcoMgr::matchOnePo(unsigned ithPo) {
         if(visited.count(oldGate) || isUnderMergeFrontierSet(oldGate)) break;
         visited.insert(oldGate);
 
-        auto rp = matchCutsAtGatePair(oldPo, newPo, ithPo, false);
+        auto rp = matchCutsAtGatePair(oldGate, newGate, ithPo, true);
 
         if(!rp.empty()) {
             candRp.erase(oldGate);
@@ -264,7 +244,7 @@ EcoMgr::matchOnePo(unsigned ithPo) {
                 q.push(make_pair(og, ng));
             }
         }
-        break;
+        // break;
 
         // if the gate is visited before or merged frontier is reached, stop matching
         // if(isMerged(oldGate)) break;
@@ -287,8 +267,8 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
 
     // 1. collect the cuts of the same NPN class
     // here we store the key as <cutsize>_<NPN class>, for convience of sorting by cut size
-    unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>> oldNPNClass2Cuts;
-    unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>> newNPNClass2Cuts;
+    unordered_map<string, vector<gv::cir::EcoCutInfo*>> oldNPNClass2Cuts;
+    unordered_map<string, vector<gv::cir::EcoCutInfo*>> newNPNClass2Cuts;
 
     // compute the cuts signature and sort by #merged gates
     computeCutsSignatures(oldNPNClass2Cuts, oldPoCuts, doConstInsert);
@@ -300,6 +280,7 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
     auto sortedOldNPNClass = sortNPNClass(oldNPNClass2Cuts);
     auto sortedNewNPNClass = sortNPNClass(newNPNClass2Cuts);
 
+
     bool foundMatch = false;
     // enumerate by old npn class
     for(const auto& oldNPNClass  : sortedOldNPNClass) {
@@ -310,16 +291,62 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
         cout << "NPN class : " << oldNPNClass << endl;
         cout << "old cuts size : " << oldCutsInfo.size() << " new cuts size : " << newCutsInfo.size() << endl;
         // assert(oldCutsInfo.size() * newCutsInfo.size() < 10000);
+        int oldCutSize = oldCutsInfo.at(0)->getCut()->getCutSize();
         int maxDist = max(oldCutsInfo.size(), newCutsInfo.size()); // pick the larger one
         int maxIt = 100;
         int numIt = 0;
         bool exceededMaxIt = false;
 
+        // collect the cuts and sort them by number of merged gates in
+        
+        unordered_map<gv::cir::EcoGate*, pair<gv::cir::EcoGate*, bool>> candMatch;
+        // get the corresponding merged gates in the old circuit
+        unordered_set<gv::cir::EcoGate*> mergedGateSet;
+        for(int newIdx = 0; newIdx < newCutsInfo.size(); ++newIdx) {
+            auto newCut = newCutsInfo.at(newIdx)->getCut();
+            auto newConstInsert = newCutsInfo.at(newIdx)->getConstInsertList();
+            for(int i=0; i<newCut->getCutSize(); ++i) {
+                auto leaf = newCut->getLeaf(i);
+                auto mergedGates = getMergedGates(leaf);
+                auto invMergedGates = getInvMergedGates(leaf);
+                for(auto& mGate : mergedGates)
+                    mergedGateSet.insert(mGate);
+                for(auto& invMGate : invMergedGates)
+                    mergedGateSet.insert(invMGate);
+            }
+        }
+
+        for(int oldIdx = 0; oldIdx < oldCutsInfo.size(); ++oldIdx) {
+            auto oldCutInfo = oldCutsInfo.at(oldIdx);
+            auto oldCut = oldCutInfo->getCut();
+            auto oldConstInsert = oldCutInfo->getConstInsertList();
+            unordered_set<int> constInsertIdxs;
+            for(auto ci : oldConstInsert) {
+                int idx = ci / 2;
+                constInsertIdxs.insert(idx);
+            }
+            unsigned numMerged = 0;
+            for(int i=0; i<oldCut->getCutSize(); ++i) {
+                auto leaf = oldCut->getLeaf(i);
+                if(constInsertIdxs.count(i)) { 
+                    continue; // we don't want to count the const inserted gate
+                }
+                
+                if(mergedGateSet.count(leaf))
+                    ++numMerged;
+            }
+            oldCutInfo->setNumMerged(numMerged);
+        }
+        // sort by the num of merged gates
+        sortCutsByNumMergedGates(oldCutsInfo);
+
         for(int dist = 0; dist < maxDist; ++dist) {
             for(int oldIdx = 0; oldIdx <= dist && oldIdx < oldCutsInfo.size(); ++oldIdx) {
-                auto&[oldCut, oldConstInsert] = oldCutsInfo.at(oldIdx);
+                auto oldCut = oldCutsInfo.at(oldIdx)->getCut();
+                auto oldConstInsert = oldCutsInfo.at(oldIdx)->getConstInsertList();
                 for(int newIdx = 0; oldIdx + newIdx <= dist && newIdx < newCutsInfo.size(); ++newIdx) {
-                    auto&[newCut, newConstInsert] = newCutsInfo.at(newIdx);
+                    auto newCut = newCutsInfo.at(newIdx)->getCut();
+                    auto newConstInsert = newCutsInfo.at(newIdx)->getConstInsertList();
                     auto[matchSucess, match] = match2Cuts(oldCut, newCut, oldConstInsert, ithPo);
                     if(matchSucess)
                         return match;
@@ -340,17 +367,33 @@ EcoMgr::matchCutsAtGatePair(gv::cir::EcoGate* oldGate, gv::cir::EcoGate* newGate
     return emptyMatch;
 }
 
+
+// check if the truth table is simply constant
+bool isTruthTableConst(size_t tt, int size) {
+    bool allZero = (getIthBit(tt, 0) == false);
+    for(int i=1; i<pow(2, size); ++i) {
+        if(allZero && (getIthBit(tt, i) == true)) {
+            return false;
+        }
+        if(!allZero && (getIthBit(tt, i) == false)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // compute the signature and sort them by NPN class for the provided cuts
 // 
 void
-EcoMgr::computeCutsSignatures(unordered_map<string, vector<pair<gv::cir::EcoCut*, ConstInsertList>>>& NPNClass2Cuts, vector<gv::cir::EcoCut *>& cuts, bool doConstInsert) {
+EcoMgr::computeCutsSignatures(unordered_map<string, vector<gv::cir::EcoCutInfo*>>& NPNClass2Cuts, vector<gv::cir::EcoCut *>& cuts, bool doConstInsert) {
     for(auto& cut : cuts) {
         // handle the original cuts
         auto[npnClass, match] = getNPNHash(cut);
         unsigned numMerged = 0;
         ConstInsertList constInsertList; // empty for the original cut
         npnClass = npnClass;
-        NPNClass2Cuts[npnClass].push_back(make_pair(cut, constInsertList));
+        gv::cir::EcoCutInfo* cutInfo = new gv::cir::EcoCutInfo(cut, constInsertList);
+        NPNClass2Cuts[npnClass].push_back(cutInfo);
 
         for(const auto& leaf : cut->getLeaves()) {
             if(isMerged(leaf))
@@ -368,7 +411,6 @@ EcoMgr::computeCutsSignatures(unordered_map<string, vector<pair<gv::cir::EcoCut*
                 for(const auto& comb : combs) {
                     for(size_t bitMask = 0; bitMask < pow(2, nConst); bitMask++) {
                         constInsertList.clear();
-                        // TODO : re-compute the npn-class of const inserted cuts
                         vector<pair<int, bool>> constAssignmentOld;
                         
                         
@@ -383,13 +425,15 @@ EcoMgr::computeCutsSignatures(unordered_map<string, vector<pair<gv::cir::EcoCut*
                         const unsigned simSize = cutSize - nConst;
                         // cout << "size : " << constAssignmentOld.size() << " " << nConst << endl;
                         auto oldCutTT = _oldNtk->computeCutTTWithConst(cut, constAssignmentOld);
-                        
+                        if(isTruthTableConst(oldCutTT, simSize)) // block the trivial cuts
+                            continue;
                         for(const auto&[constIdx, constVal] : constAssignmentOld) {
                             cout << "assign " << cut->getLeaf(constIdx)->getGateName() << " " << constVal << endl;
                         }
                         printBits(oldCutTT);
                         auto[constInsertNpnClass, _] = _pNpnHash->getNPNHash(oldCutTT, simSize);
-                        NPNClass2Cuts[constInsertNpnClass].push_back(make_pair(cut, constInsertList));
+                        cutInfo = new gv::cir::EcoCutInfo(cut, constInsertList);
+                        NPNClass2Cuts[constInsertNpnClass].push_back(cutInfo);
                         
                         cout << "const insert NPN class : " << constInsertNpnClass << endl;
                         // cout << endl;
@@ -1095,6 +1139,7 @@ EcoMgr::match2Cuts(gv::cir::EcoCut* oldCut, gv::cir::EcoCut* newCut, const Const
             cout << "cos sim : " << getCosineSimilarity(oldGate, newGate, ithPo) << endl;
         }
     }
+    cout << "kkk" << endl;
 
     return make_pair(true, candRPPair);
 }

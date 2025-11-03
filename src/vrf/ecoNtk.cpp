@@ -484,6 +484,7 @@ EcoNtk::abcReadFile() {
 
   // new the internal EcoCir
   cirV->readCirFromAbcNtk(pNtkStrash);
+  _piEqClass.resize(getNumPis());
   
   Abc_NtkForEachObj( pNtk, pNode, i )
   {
@@ -507,6 +508,10 @@ EcoNtk::abcReadFile() {
     ecoGate->ecoGateV = cirGate;
     ecoGate->_pAbcNode = pNode->pCopy;
     _abcObj2EcoGate[Abc_ObjRegular(pNode->pCopy)].insert(ecoGate);
+    if(ecoGate->isPi())
+      assert(getGate(Abc_ObjId(Abc_ObjRegular(pNode->pCopy)) - 1) == ecoGate); // check that the abc pi id and ecogate pi is diff by -1 (since 0 is for const in abc)
+    if(Abc_ObjType(Abc_ObjRegular(pNode->pCopy)) == ABC_OBJ_PI)
+      _piEqClass.at(Abc_ObjId(Abc_ObjRegular(pNode->pCopy)) - 1).push_back(ecoGate);
   }
   for(size_t i=0; i<getNumPos(); i++)
     getPo(i)->ecoGateV = getPo(i)->getFanin(0)->ecoGateV;

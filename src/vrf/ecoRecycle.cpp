@@ -13,23 +13,53 @@ void
 EcoMgr::collectFloatingGates() {
     unordered_set<gv::cir::EcoGate*> usedGates;
     gv::cir::EcoGate::setGlobalTrav();
+    int nPos = _oldNtk->getNumPos();
 
-    // do output side
-    
+    // po to rp points
+    for(int i=0; i<nPos; ++i) {
+        // this po is using dup circuit to fix
+        if(checkIfHasToFixPo(i)) continue;
+
+        // collect the gates until rp point
+        queue<gv::cir::EcoGate*> q;
+        q.push(_oldNtk->getPo(i)->getFanin(0));
+        while(!q.empty()) {
+            auto cur = q.front();
+            q.pop();
+            
+            // we don't need to consider the gates under rp points for this particular po
+            if(_finalRpPair.count(cur)) break;
+
+            if(cur->isGlobalTrav()) continue;
+            cur->setToGlobalTrav();
+
+            usedGates.insert(cur);
+
+            for(unsigned j=0; j<cur->getNumFanins(); ++j) {
+                auto fanin = cur->getFanin(j);
+                if(!fanin->isGlobalTrav())
+                    q.push(fanin);
+            }
+        }
+
+    }
+
+    // merging back part
     for(unsigned i=0; i<_rpTable.size(); ++i) {
         auto rpForIthPo = _rpTable.at(i);
         queue<gv::cir::EcoGate*> q;
-        q.push(_oldNtk->getPo(i)->getFanin(0));
+        for(auto&[oldGate, newGateInfo] : rpForIthPo) {
+            auto newGate = newGateInfo->getMappedGate();
+            q.push(newGate);
+        }
+        
+        // q.push(_oldNtk->getPo(i)->getFanin(0));
         while(!q.empty()) {
             auto cur = q.front();
             q.pop();
 
             if(cur->isGlobalTrav()) continue;
             cur->setToGlobalTrav();
-
-            // fixed to a new circuit
-            if(isFixedToAnotherGate(cur))
-                cur = _finalRpPair.at(cur).first;
 
             // merged back to the old circuit
             if(cur->isInNewCircuit() && isMerged(cur)) {
@@ -38,8 +68,9 @@ EcoMgr::collectFloatingGates() {
             }
             
             // if the gate is in the old cir, mark as used
-            if(cur->isInOldCircuit())
+            if(cur->isInOldCircuit()) {
                 usedGates.insert(cur);
+            }
 
             for(unsigned j=0; j<cur->getNumFanins(); ++j) {
                 auto fanin = cur->getFanin(j);

@@ -50,7 +50,8 @@ EcoMgr::readDesigns(const string& oldDesignName, const string& newDesignName) {
     _newNtk->getPo(i)->setOld(gv::cir::EcoGate::ECO_NEW_NTK);
 }
 
-void Net2PO( Abc_Ntk_t* pNtk)
+void
+EcoMgr::Net2PO( Abc_Ntk_t* pNtk)
 {
     int c;
     int fCheck, fBarBufs;
@@ -116,6 +117,7 @@ EcoMgr::doFraig() {
     // if(_oldNtk->getGateByAbcNode(pNode).empty() && _newNtk->getGateByAbcNode(pNode).empty()) continue;
     auto gates = _oldNtk->getGateByAbcNode(pNode);
     for(const auto& gate : gates) {
+      // cout << Abc_ObjType(pNode) << " ooo " << gate->getGateFullName() << " " << Abc_ObjId(pNode) << endl;
       _oldNtk->setGateByAbcNode(Abc_ObjRegular(pNode), gate);
     }
     
@@ -160,7 +162,6 @@ EcoMgr::doFraig() {
     bool inv = Abc_ObjFaninC0(pNode);
     for(auto g : oldGates)
       oldEqClass[Abc_ObjRegular(Abc_ObjFanin0(pNode))].push_back({g, inv ^ g->getAigNodeInv()});
-
     for(auto g : newGates)
       newEqClass[Abc_ObjRegular(Abc_ObjFanin0(pNode))].push_back({g, inv ^ g->getAigNodeInv()});
   }
@@ -193,6 +194,35 @@ EcoMgr::doFraig() {
     f << endl;
   }
   f.close();
+
+  auto oldPiEqClass = _oldNtk->getPiEqClass();
+  auto newPiEqClass = _newNtk->getPiEqClass();
+  for(size_t i=0; i<_oldNtk->getNumPis(); i++) {
+    auto oldGates = oldPiEqClass.at(i);
+    auto newGates = newPiEqClass.at(i);
+    for(auto& oldGate : oldGates) {
+      oldGate->setIsMerged();
+      auto oldComp = oldGate->getAigNodeInv();
+      f << oldGate->getGateFullName() << (oldComp ? "(inv)" : "(pos)") << " ";
+      for(auto& newGate : newGates) {
+        newGate->setIsMerged();
+        auto newComp = newGate->getAigNodeInv();
+        if((oldComp ^ newComp) == 0) {
+          _mergeTable[oldGate].insert(newGate);
+          _mergeTable[newGate].insert(oldGate);
+        }
+        else {
+          _invMergeTable[oldGate].insert(newGate);
+          _invMergeTable[newGate].insert(oldGate);
+        }
+      }
+    }
+    for(auto& newGate : newGates) {
+      auto newComp = newGate->getAigNodeInv();
+      f << newGate->getGateFullName() << (newComp ? "(inv)" : "(pos)") << " ";
+    }
+    f << endl;
+  }
 
   // merge constant and PIs
   for(size_t i=0; i<_oldNtk->getNumPis(); i++) {
@@ -261,7 +291,7 @@ EcoMgr::markMergeFrontier() {
           auto fanin = cur->getFanin(j);
           if(!fanin->isGlobalTrav())
             q.push(fanin);
-          if(underMergedFrontierSet.count(cur)) {
+          if(underMergedFrontierSet.count(cur) && cur->getNumFanins() > 1) {
             removeUnderMergedFrontierSet.erase(fanin);
           }
         }
@@ -314,6 +344,8 @@ EcoMgr::doMatching(unsigned kFeassible) {
   // compute the score of each cut and match the remaining cuts
   // sortCandCutsByScore();
 
+  // do floating gate recycle
+  doRecycle();
   
 
 
